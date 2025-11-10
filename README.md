@@ -566,7 +566,13 @@ This tool is designed for legitimate security research, penetration testing, and
 
 ## License
 
-MIT License - See LICENSE file for details
+Corrode is licensed under the **GNU Affero General Public License v3.0 (AGPL-3.0)** with Corelift LLC (ul0gic) retaining full copyright over the codebase. See `LICENSE` for the complete terms. Highlights:
+- ✅ Any modifications or derivative works must remain AGPL and be published when distributed or offered as a hosted service.
+- ✅ Attribution to Corelift LLC and ul0gic is required in downstream forks and hosted deployments.
+- ✅ Free for security research, internal assessments, and community contributions; commercial users can contact us for dual-licensing options.
+- ❌ No closed-source redistribution, SaaS rebranding, or proprietary embedding without a commercial agreement.
+
+As the original author, Corelift LLC can still dual-license Corrode (e.g., for PenPal integrations) while keeping the community version open under AGPL-3.0.
 
 ## Quick Reference
 
