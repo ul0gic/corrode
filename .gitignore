@@ -1,0 +1,26 @@
+# Rust build artifacts
+/target
+**/*.rs.bk
+*.pdb
+
+# Output directory - contains scan results with potentially sensitive data
+/corrode-output
+
+# Site list - potentially sensitive target information
+site-list.md
+targets.txt
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Backup files
+*.bak
+*.tmp

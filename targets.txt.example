@@ -1,0 +1,14 @@
+# Corrode - Target URLs
+#
+# Add one URL per line
+# Lines starting with # are comments and will be ignored
+# Empty lines are also ignored
+#
+# Example targets:
+
+# https://example.com
+# https://app.example.com
+# https://api.example.com
+
+# Add your targets below:
+
