@@ -574,6 +574,15 @@ Corrode is licensed under the **GNU Affero General Public License v3.0 (AGPL-3.0
 
 As the original author, Corelift LLC can still dual-license Corrode (e.g., for PenPal integrations) while keeping the community version open under AGPL-3.0.
 
+## Contributing
+
+Read `CONTRIBUTING.md` before opening a PR. Key points:
+- ✅ All patches are accepted under AGPL-3.0 and may be dual-licensed by Corelift LLC (ul0gic).
+- ✅ Public shoutouts, talks, and demos must credit Corelift LLC and ul0gic.
+- ❌ You cannot fork Corrode, strip attribution, and resell it or run it as a closed-source SaaS without a Corelift LLC agreement.
+
+Questions about contributions or commercial licensing? Open an issue or contact the Corelift LLC team.
+
 ## Quick Reference
 
 ### Common Commands
