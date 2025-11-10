@@ -9,47 +9,60 @@ Built with Rust and chromiumoxide for blazing-fast concurrent scanning with comp
 ### High-Level Architecture
 
 ```mermaid
-graph TB
+graph LR
     subgraph Input["📥 Input Layer"]
-        A[Single URL] --> Parser[URL Parser]
-        B[targets.txt File] --> Parser
-        Parser --> Queue[Scan Queue]
+        A[Single URL]
+        B[targets.txt File]
     end
 
     subgraph Browser["🌐 Browser Layer"]
-        Queue --> Chrome[Chrome/Chromium<br/>Headless Browser]
-        Chrome --> Page1[Page Instance 1]
-        Chrome --> Page2[Page Instance 2]
-        Chrome --> PageN[Page Instance N]
-        style Chrome fill:#4285F4,stroke:#1967D2,color:#fff
+        C[Chrome/Chromium<br/>Headless Browser]
+        style C fill:#4285F4,stroke:#1967D2,color:#fff
     end
 
     subgraph Analysis["🔍 Analysis Engine"]
-        Page1 & Page2 & PageN --> NetMon[Network Monitor]
-        Page1 & Page2 & PageN --> DOMExt[DOM Extractor]
-        Page1 & Page2 & PageN --> ScriptExt[Script Extractor]
+        D[Network Monitor]
+        E[DOM Extractor]
+        F[Script Extractor]
+        G[API Discovery]
+        H[Secret Scanner]
+        I[Comment Extractor]
+        J[Technology Detection]
+        K[Security Analysis]
+        L[API Vuln Tester]
 
-        NetMon --> APIDisc[API Discovery]
-        ScriptExt --> SecretScan[Secret Scanner]
-        ScriptExt --> CommentExt[Comment Extractor]
-        DOMExt --> TechDet[Technology Detection]
-        DOMExt --> SecScan[Security Analysis]
-
-        APIDisc --> APITest[API Vulnerability Tester]
-
-        style NetMon fill:#34A853,stroke:#0D652D,color:#fff
-        style SecretScan fill:#EA4335,stroke:#A50E0E,color:#fff
-        style APITest fill:#FBBC04,stroke:#E37400,color:#fff
+        style D fill:#34A853,stroke:#0D652D,color:#fff
+        style H fill:#EA4335,stroke:#A50E0E,color:#fff
+        style L fill:#FBBC04,stroke:#E37400,color:#fff
     end
 
     subgraph Output["📊 Output Layer"]
-        SecretScan & APITest & CommentExt & TechDet & SecScan --> Aggregator[Results Aggregator]
-        Aggregator --> JSON[scan_result.json]
-        Aggregator --> MD[REPORT.md]
+        M[Results Aggregator]
+        N[scan_result.json]
+        O[REPORT.md]
 
-        style JSON fill:#1967D2,stroke:#0D47A1,color:#fff
-        style MD fill:#1967D2,stroke:#0D47A1,color:#fff
+        style N fill:#1967D2,stroke:#0D47A1,color:#fff
+        style O fill:#1967D2,stroke:#0D47A1,color:#fff
     end
+
+    A --> C
+    B --> C
+    C --> D
+    C --> E
+    C --> F
+    D --> G
+    F --> H
+    F --> I
+    E --> J
+    E --> K
+    G --> L
+    H --> M
+    L --> M
+    I --> M
+    J --> M
+    K --> M
+    M --> N
+    M --> O
 
     style Input fill:#E8E8E8,stroke:#5F6368
     style Browser fill:#D3D3D3,stroke:#1967D2
