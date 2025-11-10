@@ -51,10 +51,10 @@ graph TB
         style MD fill:#1967D2,stroke:#0D47A1,color:#fff
     end
 
-    style Input fill:#F8F9FA,stroke:#5F6368
-    style Browser fill:#E8F0FE,stroke:#1967D2
-    style Analysis fill:#FEF7E0,stroke:#E37400
-    style Output fill:#E6F4EA,stroke:#0D652D
+    style Input fill:#E8E8E8,stroke:#5F6368
+    style Browser fill:#D3D3D3,stroke:#1967D2
+    style Analysis fill:#C0C0C0,stroke:#E37400
+    style Output fill:#B8B8B8,stroke:#0D652D
 ```
 
 ### Scanning Workflow
@@ -165,10 +165,10 @@ flowchart LR
     D5 --> R1
     R1 --> R2 --> R3 --> R4
 
-    style Sources fill:#E8F0FE,stroke:#1967D2
-    style Patterns fill:#FEF7E0,stroke:#E37400
-    style Detection fill:#FCE8E6,stroke:#EA4335
-    style Results fill:#E6F4EA,stroke:#34A853
+    style Sources fill:#E8E8E8,stroke:#1967D2
+    style Patterns fill:#D3D3D3,stroke:#E37400
+    style Detection fill:#C0C0C0,stroke:#EA4335
+    style Results fill:#B8B8B8,stroke:#34A853
     style D1 fill:#FBBC04,stroke:#E37400,color:#000
     style D4 fill:#FBBC04,stroke:#E37400,color:#000
 ```
