@@ -29,44 +29,21 @@ corrode-output/           # Default output directory (per scan)
 ### High-Level Architecture
 
 ```mermaid
-graph LR
-    subgraph Input["📥 Input"]
-        A[URL (--url)]
-    end
-
-    subgraph Browser["🌐 Browser"]
-        B[Headless Chrome/Chromium]
-    end
-
-    subgraph Analysis["🔍 Analysis"]
-        C[Network Monitor]
-        D[DOM/Storage Extractor]
-        E[Script + AST Scanner]
-        F[API Discovery & Tests]
-        G[Secret Scanner]
-        H[Tech Fingerprinter]
-        I[Security Checks]
-    end
-
-    A --> B
-    B --> C
-    B --> D
-    B --> E
-    E --> G
-    D --> H
-    C --> F
-    F --> I
-    G --> Results[Reporting (JSON + MD)]
+graph TD
+    A[URL Input] --> B[Headless Chrome/Chromium]
+    B --> C[Network Monitor]
+    B --> D[DOM/Storage Extractor]
+    B --> E[Script + AST Scanner]
+    E --> G[Secret Scanner]
+    D --> H[Tech Fingerprinter]
+    C --> F[API Discovery & Tests]
+    F --> I[Security Checks]
+    G --> Results[Reporting JSON + MD]
     F --> Results
     C --> Results
     D --> Results
     H --> Results
     I --> Results
-
-    style Input fill:#fff7ed,stroke:#ea580c,color:#111827
-    style Browser fill:#e0f2fe,stroke:#1d4ed8,color:#0f172a
-    style Analysis fill:#eef2ff,stroke:#312e81,color:#111827
-    style Results fill:#f3e8ff,stroke:#7c3aed,color:#111827
 ```
 
 ### Scanning Workflow
@@ -76,37 +53,24 @@ sequenceDiagram
     participant User
     participant CLI
     participant Browser
-    participant Page
-    participant NetMon as Network
-    participant Scanner as Secret Scanner
-    participant APITest as API Tests
+    participant Network
+    participant Scanner
     participant Reporter
 
-    User->>CLI: corrode --url https://example.com -v
+    User->>CLI: corrode --url example.com -v
     CLI->>Browser: Create page
-    Browser->>Page: Navigate to URL
-
-    par Analysis
-        Page->>NetMon: Enable tracking
-        NetMon-->>Page: Capture requests/API calls
-
-        Page->>Scanner: HTML + inline scripts
-        Page->>Scanner: Fetch external scripts
-        Scanner->>Scanner: Regex + AST secret scan
-
-        Page->>Page: DOM elements, storage, cookies, techs
-    end
-
-    Scanner->>APITest: Discovered endpoints
-    APITest->>APITest: Auth bypass / IDOR / mass assignment
-
-    Scanner-->>Reporter: Secrets
-    APITest-->>Reporter: API findings
-    NetMon-->>Reporter: Network data
-    Page-->>Reporter: DOM/tech info
-
+    Browser->>Browser: Navigate to URL
+    Browser->>Network: Enable tracking
+    Browser->>Scanner: Extract HTML + scripts
+    Scanner->>Scanner: Regex + AST secret scan
+    Scanner->>Scanner: API discovery
+    Scanner->>Scanner: Run security tests
+    Scanner->>Reporter: Secrets
+    Scanner->>Reporter: API findings
+    Network->>Reporter: Network data
+    Browser->>Reporter: DOM/tech info
     Reporter->>Reporter: Generate JSON & Markdown
-    Reporter-->>User: Save to output folder
+    Reporter->>User: Save to output folder
 ```
 
 ### Secret Detection Pipeline
@@ -319,51 +283,6 @@ Corrode automatically identifies 40+ technologies:
 **Libraries**: jQuery, Bootstrap, Tailwind CSS, Material-UI
 **State Management**: Redux, MobX, Zustand, Apollo Client, Relay
 
-## Output
-
-Results are saved in `corrode-output/[domain]/`:
-
-**scan_result.json** - Complete JSON scan data:
-```json
-{
-  "url": "https://example.com",
-  "timestamp": "2025-11-09T12:00:00Z",
-  "secrets": {...},
-  "network": {
-    "total_requests": 45,
-    "api_calls": [...],
-    "third_party": [...]
-  },
-  "dom": {...},
-  "javascript": {...},
-  "security": {...},
-  "technologies": ["React", "Next.js", "Supabase"],
-  "vulnerabilities": [...],
-  "api_tests": [...],
-  "comments": [...],
-  "success": true
-}
-```
-
-**REPORT.md** - Human-readable security report with:
-- Executive summary with risk level
-- All detected secrets and credentials
-- Vulnerabilities categorized by severity
-- API security test results
-- JavaScript analysis findings
-- DOM and technology stack information
-- Actionable remediation recommendations
-
-
-## Performance
-
-- **Node.js (Puppeteer)**: ~5-10s per site
-- **Rust (corrode)**: ~3-5s per site
-
-Scan 100 sites:
-- Node: ~15 minutes
-- Rust: ~30 seconds
-
 ## Roadmap & Features in Progress
 
 - [ ] GraphQL schema extraction and testing
@@ -414,43 +333,6 @@ Read `CONTRIBUTING.md` before opening a PR. Key points:
 - ✅ Redistributed builds must keep license headers, this disclaimer, and README attribution intact.
 
 Questions about contributions? Open an issue or ping @ul0gic on GitHub.
-
-## Quick Reference
-
-### Common Commands
-
-```bash
-# Install globally
-./install.sh
-# or
-make install
-
-# Scan a specific URL
-corrode --url https://example.com
-
-# Verbose scan
-corrode --url https://example.com -v
-
-# View help
-corrode --help
-corrode -h
-
-# Uninstall
-make uninstall
-```
-
-### File Structure After Installation
-
-```
-corrode/
-├── install.sh              # Installation script
-├── Makefile                # Build automation
-├── corrode-output/         # Scan results (auto-created)
-│   └── example-com/
-│       ├── scan_result.json
-│       └── REPORT.md
-└── src/                    # Source code
-```
 
 ## Contact
 
