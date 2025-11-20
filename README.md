@@ -28,102 +28,11 @@ corrode-output/           # Default output directory (per scan)
 
 ### High-Level Architecture
 
-```mermaid
-graph LR
-    subgraph Input["📥 Input Layer"]
-        A[Single URL (--url flag)]
-    end
-
-    subgraph Browser["🌐 Browser Layer"]
-        C[Chrome/Chromium Headless Browser]
-        style C fill:#e0f2fe,stroke:#1d4ed8,color:#0f172a
-    end
-
-    subgraph Analysis["🔍 Analysis Engine"]
-        D[Network Monitor]
-        E[DOM Extractor]
-        F[Script Extractor]
-        G[API Discovery]
-        H[Secret Scanner]
-        J[Technology Detection]
-        K[Security Analysis]
-        L[API Vuln Tester]
-
-        style D fill:#cffafe,stroke:#0ea5e9,color:#0f172a
-        style H fill:#fee2e2,stroke:#991b1b,color:#111827
-        style L fill:#fef9c3,stroke:#b45309,color:#111827
-    end
-
-    A --> C
-    C --> D
-    C --> E
-    C --> F
-    D --> G
-    F --> H
-    E --> J
-    E --> K
-    G --> L
-    H --> Results[Results Aggregator]
-    L --> Results
-    J --> Results
-    K --> Results
-
-    style Input fill:#fef3c7,stroke:#92400e,color:#1f2937
-    style Browser fill:#e0f2fe,stroke:#1d4ed8,color:#0f172a
-    style Analysis fill:#e0e7ff,stroke:#312e81,color:#111827
-    style Results fill:#ede9fe,stroke:#6b21a8,color:#111827
-```
+Architecture: `docs/diagrams/architecture.mmd` (render to SVG/PNG as needed)
 
 ### Scanning Workflow
 
-```mermaid
-sequenceDiagram
-    participant User
-    participant CLI
-    participant Browser
-    participant Page
-    participant NetMon as Network Monitor
-    participant Scanner as Secret Scanner
-    participant APITest as API Tester
-    participant Reporter
-
-    User->>CLI: corrode --url https://example.com -v
-    CLI->>CLI: Parse arguments
-    CLI->>Browser: Create new page
-    Browser->>Page: Navigate to URL
-
-    par Parallel Analysis
-        Page->>NetMon: Enable network tracking
-        NetMon->>NetMon: Monitor all HTTP requests
-        NetMon-->>Page: Track API calls
-
-        Page->>Page: Wait for page load
-        Page->>Scanner: Extract HTML content
-        Page->>Scanner: Extract inline scripts
-        Page->>Scanner: Fetch external scripts
-        Scanner->>Scanner: Scan for 30+ secret patterns
-
-        Page->>Page: Extract DOM elements
-        Page->>Page: Detect technologies
-        Page->>Page: Analyze cookies
-        Page->>Page: Check localStorage/sessionStorage
-    end
-
-    Scanner->>APITest: Discovered API endpoints
-
-    APITest->>APITest: Run API tests (auth bypass, IDOR, mass assignment)
-
-    Scanner-->>Reporter: Secrets found
-    APITest-->>Reporter: Vulnerabilities found
-    NetMon-->>Reporter: Network analysis
-    Page-->>Reporter: DOM & tech data
-
-    Reporter->>Reporter: Generate JSON report
-    Reporter->>Reporter: Generate Markdown report
-    Reporter-->>User: Save to corrode-output/[domain]/
-
-    Reporter-->>User: Display summary
-```
+Workflow: `docs/diagrams/workflow.mmd` (render to SVG/PNG as needed)
 
 ### Secret Detection Pipeline
 

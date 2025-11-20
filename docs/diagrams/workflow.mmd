@@ -1,0 +1,42 @@
+sequenceDiagram
+    participant User
+    participant CLI
+    participant Browser
+    participant Page
+    participant NetMon as Network Monitor
+    participant Scanner as Secret Scanner
+    participant APITest as API Tester
+    participant Reporter
+
+    User->>CLI: corrode --url https://example.com -v
+    CLI->>CLI: Parse arguments
+    CLI->>Browser: Create new page
+    Browser->>Page: Navigate to URL
+
+    par Parallel Analysis
+        Page->>NetMon: Enable network tracking
+        NetMon->>NetMon: Monitor HTTP requests
+        NetMon-->>Page: Track API calls
+
+        Page->>Page: Wait for page load
+        Page->>Scanner: Extract HTML content
+        Page->>Scanner: Extract inline scripts
+        Page->>Scanner: Fetch external scripts
+        Scanner->>Scanner: Scan for secret patterns
+
+        Page->>Page: Extract DOM elements
+        Page->>Page: Detect technologies
+        Page->>Page: Analyze cookies/storage
+    end
+
+    Scanner->>APITest: Discovered API endpoints
+    APITest->>APITest: Run API tests (auth bypass, IDOR, mass assignment)
+
+    Scanner-->>Reporter: Secrets found
+    APITest-->>Reporter: API findings
+    NetMon-->>Reporter: Network analysis
+    Page-->>Reporter: DOM & tech data
+
+    Reporter->>Reporter: Generate JSON/Markdown reports
+    Reporter-->>User: Save to corrode-output/[domain]/
+    Reporter-->>User: Display summary
