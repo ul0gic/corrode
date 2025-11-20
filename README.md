@@ -28,11 +28,86 @@ corrode-output/           # Default output directory (per scan)
 
 ### High-Level Architecture
 
-Architecture: `docs/diagrams/architecture.mmd` (render to SVG/PNG as needed)
+```mermaid
+graph LR
+    subgraph Input["📥 Input"]
+        A[URL (--url)]
+    end
+
+    subgraph Browser["🌐 Browser"]
+        B[Headless Chrome/Chromium]
+    end
+
+    subgraph Analysis["🔍 Analysis"]
+        C[Network Monitor]
+        D[DOM/Storage Extractor]
+        E[Script + AST Scanner]
+        F[API Discovery & Tests]
+        G[Secret Scanner]
+        H[Tech Fingerprinter]
+        I[Security Checks]
+    end
+
+    A --> B
+    B --> C
+    B --> D
+    B --> E
+    E --> G
+    D --> H
+    C --> F
+    F --> I
+    G --> Results[Reporting (JSON + MD)]
+    F --> Results
+    C --> Results
+    D --> Results
+    H --> Results
+    I --> Results
+
+    style Input fill:#fff7ed,stroke:#ea580c,color:#111827
+    style Browser fill:#e0f2fe,stroke:#1d4ed8,color:#0f172a
+    style Analysis fill:#eef2ff,stroke:#312e81,color:#111827
+    style Results fill:#f3e8ff,stroke:#7c3aed,color:#111827
+```
 
 ### Scanning Workflow
 
-Workflow: `docs/diagrams/workflow.mmd` (render to SVG/PNG as needed)
+```mermaid
+sequenceDiagram
+    participant User
+    participant CLI
+    participant Browser
+    participant Page
+    participant NetMon as Network
+    participant Scanner as Secret Scanner
+    participant APITest as API Tests
+    participant Reporter
+
+    User->>CLI: corrode --url https://example.com -v
+    CLI->>Browser: Create page
+    Browser->>Page: Navigate to URL
+
+    par Analysis
+        Page->>NetMon: Enable tracking
+        NetMon-->>Page: Capture requests/API calls
+
+        Page->>Scanner: HTML + inline scripts
+        Page->>Scanner: Fetch external scripts
+        Scanner->>Scanner: Regex + AST secret scan
+
+        Page->>Page: DOM elements, storage, cookies, techs
+    end
+
+    Scanner->>APITest: Discovered endpoints
+    APITest->>APITest: Auth bypass / IDOR / mass assignment
+
+    Scanner-->>Reporter: Secrets
+    APITest-->>Reporter: API findings
+    NetMon-->>Reporter: Network data
+    Page-->>Reporter: DOM/tech info
+
+    Reporter->>Reporter: Generate JSON & Markdown
+    Reporter-->>User: Save to output folder
+```
 
 ### Secret Detection Pipeline
 
@@ -116,12 +191,11 @@ flowchart LR
 cargo install corrode
 ```
 
-For local development:
+For local development (from source):
 ```bash
 git clone https://github.com/ul0gic/corrode.git
 cd corrode
 cargo build --release
-# run locally
 ./target/release/corrode --url https://example.com
 ```
 
