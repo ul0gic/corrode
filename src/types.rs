@@ -25,9 +25,16 @@ pub struct SecretFinding {
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct Comment {
+    pub source: String,
+    pub comment_type: String,
+    pub content: String,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct NetworkAnalysis {
     pub total_requests: usize,
-    pub api_calls: Vec<ApiCall>,
+    pub api_calls: Vec<String>,
     pub third_party: Vec<String>,
     pub websockets: Vec<String>,
     pub redirects: Vec<String>,
@@ -50,10 +57,10 @@ pub struct ApiCall {
 pub struct DomAnalysis {
     pub scripts: usize,
     pub forms: Vec<FormInfo>,
-    pub hidden_inputs: Vec<String>,
+    pub hidden_inputs: Vec<HiddenInput>,
     pub iframes: Vec<String>,
     pub meta_tags: Vec<MetaTag>,
-    pub data_attributes: Vec<String>,
+    pub data_attributes: Vec<DataAttribute>,
     pub local_storage: HashMap<String, String>,
     pub session_storage: HashMap<String, String>,
     pub cookies: Vec<CookieInfo>,
@@ -64,13 +71,25 @@ pub struct DomAnalysis {
 pub struct FormInfo {
     pub action: String,
     pub method: String,
-    pub inputs: Vec<String>,
+    pub input_count: usize,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct MetaTag {
     pub name: String,
     pub content: String,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct HiddenInput {
+    pub name: String,
+    pub value: String,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct DataAttribute {
+    pub tag: String,
+    pub attributes: HashMap<String, String>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -112,16 +131,8 @@ pub struct Vulnerability {
     pub vuln_type: String,
     pub severity: String,
     pub description: String,
-    pub evidence: String,
     pub remediation: String,
-    pub owasp: Vec<String>,
-}
-
-#[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct Comment {
-    pub source: String,
-    pub comment_type: String,
-    pub content: String,
+    pub url: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]

@@ -1,6 +1,5 @@
 use crate::types::{ApiTestResult, DiscoveredEndpoint};
-use reqwest::{Client, header};
-use anyhow::Result;
+use reqwest::{header, Client};
 use std::time::Duration;
 
 pub struct ApiTester {
@@ -14,27 +13,28 @@ impl ApiTester {
             .danger_accept_invalid_certs(true)
             .build()
             .unwrap();
-        
+
         Self { client }
     }
-    
+
     /// Test if endpoint is accessible without authentication
-    pub async fn test_auth_bypass(&self, endpoint: &DiscoveredEndpoint, base_url: &str) -> Option<ApiTestResult> {
+    pub async fn test_auth_bypass(
+        &self,
+        endpoint: &DiscoveredEndpoint,
+        base_url: &str,
+    ) -> Option<ApiTestResult> {
         let url = normalize_url(&endpoint.url, base_url);
-        
+
         // Test without any auth headers
-        let response = match self.client
-            .get(&url)
-            .send()
-            .await {
-                Ok(r) => r,
-                Err(_) => return None,
-            };
-        
+        let response = match self.client.get(&url).send().await {
+            Ok(r) => r,
+            Err(_) => return None,
+        };
+
         let status = response.status().as_u16();
         let body = response.text().await.ok()?;
         let body_size = body.len();
-        
+
         // Flag if we get 200 with substantial data
         if status == 200 && body_size > 100 {
             // Check if response contains sensitive data indicators
@@ -46,14 +46,14 @@ impl ApiTester {
                 || body.contains("data")
                 || body.contains("[{")  // Array of objects
                 || body.contains("\"id\":");
-            
+
             if has_sensitive_data {
                 let preview = if body.len() > 200 {
                     format!("{}...", &body[..200])
                 } else {
                     body.clone()
                 };
-                
+
                 return Some(ApiTestResult {
                     endpoint: url.clone(),
                     test_type: "Authentication Bypass".to_string(),
@@ -64,28 +64,32 @@ impl ApiTester {
                 });
             }
         }
-        
+
         None
     }
-    
+
     /// Test for IDOR vulnerabilities by trying different IDs
-    pub async fn test_idor(&self, endpoint: &DiscoveredEndpoint, base_url: &str) -> Vec<ApiTestResult> {
+    pub async fn test_idor(
+        &self,
+        endpoint: &DiscoveredEndpoint,
+        base_url: &str,
+    ) -> Vec<ApiTestResult> {
         let mut results = Vec::new();
-        
+
         // Only test endpoints with ID parameters
         if !endpoint.parameters.is_empty() {
             let test_ids = vec!["1", "2", "3", "100", "1000", "me", "admin"];
-            
+
             for test_id in test_ids {
                 let mut test_url = normalize_url(&endpoint.url, base_url);
-                
+
                 // Replace parameter placeholders with test ID
                 for param in &endpoint.parameters {
                     test_url = test_url.replace(&format!("{{{}}}", param), test_id);
                     test_url = test_url.replace(&format!("${{{}}}", param), test_id);
                     test_url = test_url.replace(&format!(":{}", param), test_id);
                 }
-                
+
                 if let Ok(response) = self.client.get(&test_url).send().await {
                     let status = response.status().as_u16();
                     if let Ok(body) = response.text().await {
@@ -98,34 +102,39 @@ impl ApiTester {
                                 evidence: format!("HTTP {} - Accessible with ID: {}", status, test_id),
                                 details: format!("Endpoint allows access to different object IDs without authorization."),
                             });
-                            break;  // Found one, don't spam
+                            break; // Found one, don't spam
                         }
                     }
                 }
             }
         }
-        
+
         results
     }
-    
+
     /// Test if endpoint reveals different behavior with/without auth
-    pub async fn test_auth_differences(&self, endpoint: &DiscoveredEndpoint, base_url: &str) -> Option<ApiTestResult> {
+    pub async fn test_auth_differences(
+        &self,
+        endpoint: &DiscoveredEndpoint,
+        base_url: &str,
+    ) -> Option<ApiTestResult> {
         let url = normalize_url(&endpoint.url, base_url);
-        
+
         // Test without auth
         let response_no_auth = self.client.get(&url).send().await.ok()?;
         let status_no_auth = response_no_auth.status().as_u16();
         let body_no_auth = response_no_auth.text().await.ok()?;
-        
+
         // Test with invalid token
-        let response_invalid = self.client
+        let response_invalid = self
+            .client
             .get(&url)
             .header(header::AUTHORIZATION, "Bearer invalid_token_12345")
             .send()
             .await
             .ok()?;
         let status_invalid = response_invalid.status().as_u16();
-        
+
         // If both return 200, that's suspicious
         if status_no_auth == 200 && status_invalid == 200 {
             return Some(ApiTestResult {
@@ -137,7 +146,7 @@ impl ApiTester {
                 details: format!("Endpoint does not properly validate authentication tokens."),
             });
         }
-        
+
         // If no auth returns data but different status codes
         if status_no_auth == 200 && body_no_auth.len() > 100 {
             return Some(ApiTestResult {
@@ -145,22 +154,30 @@ impl ApiTester {
                 test_type: "Publicly Accessible API".to_string(),
                 severity: "MEDIUM".to_string(),
                 vulnerable: true,
-                evidence: format!("HTTP {} - {} bytes returned without authentication", status_no_auth, body_no_auth.len()),
+                evidence: format!(
+                    "HTTP {} - {} bytes returned without authentication",
+                    status_no_auth,
+                    body_no_auth.len()
+                ),
                 details: format!("Endpoint is publicly accessible and returns data."),
             });
         }
-        
+
         None
     }
-    
+
     /// Test for mass assignment vulnerabilities
-    pub async fn test_mass_assignment(&self, endpoint: &DiscoveredEndpoint, base_url: &str) -> Option<ApiTestResult> {
+    pub async fn test_mass_assignment(
+        &self,
+        endpoint: &DiscoveredEndpoint,
+        base_url: &str,
+    ) -> Option<ApiTestResult> {
         if endpoint.method != "POST" && endpoint.method != "PUT" && endpoint.method != "PATCH" {
             return None;
         }
-        
+
         let url = normalize_url(&endpoint.url, base_url);
-        
+
         // Try to POST/PUT with admin fields
         let dangerous_fields = serde_json::json!({
             "role": "admin",
@@ -169,19 +186,17 @@ impl ApiTester {
             "privileges": ["admin"],
             "is_superuser": true
         });
-        
-        let response = self.client
-            .request(
-                endpoint.method.parse().unwrap(),
-                &url
-            )
+
+        let response = self
+            .client
+            .request(endpoint.method.parse().unwrap(), &url)
             .json(&dangerous_fields)
             .send()
             .await
             .ok()?;
-        
+
         let status = response.status().as_u16();
-        
+
         // If it doesn't reject our admin fields, flag it
         if status == 200 || status == 201 {
             return Some(ApiTestResult {
@@ -193,7 +208,7 @@ impl ApiTester {
                 details: format!("Endpoint may be vulnerable to mass assignment attacks."),
             });
         }
-        
+
         None
     }
 }
@@ -203,7 +218,12 @@ fn normalize_url(endpoint_url: &str, base_url: &str) -> String {
         endpoint_url.to_string()
     } else if endpoint_url.starts_with('/') {
         if let Ok(parsed) = reqwest::Url::parse(base_url) {
-            format!("{}://{}{}", parsed.scheme(), parsed.host_str().unwrap_or(""), endpoint_url)
+            format!(
+                "{}://{}{}",
+                parsed.scheme(),
+                parsed.host_str().unwrap_or(""),
+                endpoint_url
+            )
         } else {
             endpoint_url.to_string()
         }

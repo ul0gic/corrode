@@ -564,24 +564,24 @@ This tool is designed for legitimate security research, penetration testing, and
 
 **Legal Notice**: Unauthorized access to computer systems is illegal under laws such as the Computer Fraud and Abuse Act (CFAA) in the United States and similar legislation in other countries. Always obtain proper authorization before testing.
 
+Corrode is provided by **ul0gic** on an "as-is" basis with no warranty. You assume all responsibility for how you use the tool.
+
 ## License
 
-Corrode is licensed under the **GNU Affero General Public License v3.0 (AGPL-3.0)** with Corelift LLC (ul0gic) retaining full copyright over the codebase. See `LICENSE` for the complete terms. Highlights:
+Corrode is licensed under the **GNU Affero General Public License v3.0 (AGPL-3.0)**. See `LICENSE` for the complete terms. Highlights:
 - ✅ Any modifications or derivative works must remain AGPL and be published when distributed or offered as a hosted service.
-- ✅ Attribution to Corelift LLC and ul0gic is required in downstream forks and hosted deployments.
-- ✅ Free for security research, internal assessments, and community contributions; commercial users can contact us for dual-licensing options.
-- ❌ No closed-source redistribution, SaaS rebranding, or proprietary embedding without a commercial agreement.
-
-As the original author, Corelift LLC can still dual-license Corrode (e.g., for PenPal integrations) while keeping the community version open under AGPL-3.0.
+- ✅ Keep attribution to **ul0gic** and the Corrode project in downstream forks and hosted deployments.
+- ✅ Free for security research, internal assessments, and community contributions—commercial users simply follow the same AGPL requirements.
+- ⚠️ The software is provided without warranty; use it only when you have authorization.
 
 ## Contributing
 
 Read `CONTRIBUTING.md` before opening a PR. Key points:
-- ✅ All patches are accepted under AGPL-3.0 and may be dual-licensed by Corelift LLC (ul0gic).
-- ✅ Public shoutouts, talks, and demos must credit Corelift LLC and ul0gic.
-- ❌ You cannot fork Corrode, strip attribution, and resell it or run it as a closed-source SaaS without a Corelift LLC agreement.
+- ✅ All patches are accepted under AGPL-3.0 and you confirm you have the right to contribute the code.
+- ✅ Public shoutouts, talks, and demos must credit Corrode and ul0gic.
+- ✅ Redistributed builds must keep license headers, this disclaimer, and README attribution intact.
 
-Questions about contributions or commercial licensing? Open an issue or contact the Corelift LLC team.
+Questions about contributions? Open an issue or ping @ul0gic on GitHub.
 
 ## Quick Reference
 
