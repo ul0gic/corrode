@@ -255,11 +255,11 @@ cargo build --release
 ./target/release/corrode --help
 ```
 
-### Method 4: Cargo Install
+### Method 4: Cargo Install (coming soon)
 
 ```bash
-# Install directly from the repository (future)
-cargo install --path .
+# Install directly from the repository
+cargo install --path . --locked
 
 # Or once published to crates.io:
 cargo install corrode
