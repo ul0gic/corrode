@@ -44,6 +44,9 @@ graph TD
     D --> Results
     H --> Results
     I --> Results
+
+    classDef purple fill:#e9d5ff,stroke:#7c3aed,stroke-width:2px,color:#000
+    class A,B,C,D,E,F,G,H,I,Results purple
 ```
 
 ### Scanning Workflow
@@ -76,57 +79,23 @@ sequenceDiagram
 ### Secret Detection Pipeline
 
 ```mermaid
-flowchart LR
-    subgraph Sources["📄 Content Sources"]
-        S1[HTML Content]
-        S2[Inline Scripts]
-        S3[External Scripts]
-        S4[Hidden Inputs]
-        S5[Data Attributes]
-        S6[localStorage]
-        S7[sessionStorage]
-        S8[Window Objects]
-        S9[Cookies]
-    end
-
-    subgraph Patterns["🎯 Pattern Matching"]
-        P1[30+ Regex Patterns]
-        P2[JWT Decoder]
-        P3[Base64 Decoder]
-    end
-
-    subgraph Detection["🔍 Detection Logic"]
-        D1{Match Found?}
-        D2[Extract Context]
-        D3[Classify Secret Type]
-        D4{Supabase JWT?}
-        D5[Mark as service_role]
-    end
-
-    subgraph Results["📋 Results"]
-        R1[Secret Findings]
-        R2[Source Location]
-        R3[Pattern Type]
-        R4[Severity]
-    end
-
-    S1 & S2 & S3 & S4 & S5 & S6 & S7 & S8 & S9 --> P1
-    P1 --> D1
-    D1 -->|Yes| D2
-    D1 -->|No| Skip[Skip]
-    D2 --> D3
-    D3 --> D4
-    D4 -->|Yes| D5
-    D4 -->|No| R1
-    D5 --> R1
-    R1 --> R2 --> R3 --> R4
-
-    style Sources fill:#e0f2fe,stroke:#1d4ed8,color:#0f172a
-    style Patterns fill:#fef3c7,stroke:#92400e,color:#111827
-    style Detection fill:#fee2e2,stroke:#b91c1c,color:#111827
-    style Results fill:#ede9fe,stroke:#6b21a8,color:#111827
-    style D1 fill:#fef9c3,stroke:#b45309,color:#111827
-    style D4 fill:#fef9c3,stroke:#b45309,color:#111827
+graph TD
+    S1[HTML Content] --> P[Pattern Matching]
+    S2[Inline Scripts] --> P
+    S3[External Scripts] --> P
+    S4[Hidden Inputs] --> P
+    S5[localStorage/sessionStorage] --> P
+    S6[Window Objects] --> P
+    S7[Cookies] --> P
+    P --> D1[Regex Patterns]
+    P --> D2[JWT Decoder]
+    P --> D3[Base64 Decoder]
+    D1 --> R[Extract & Classify]
+    D2 --> R
+    D3 --> R
+    R --> F1[Secret Findings]
+    R --> F2[Source Location]
+    R --> F3[Severity Level]
 ```
 
 ## Features
@@ -172,13 +141,6 @@ cargo build --release
 | OS                   | Linux/macOS (Windows planned)             |
 
 ## Usage
-
-### Quick Start
-
-Local build example:
-```bash
-./target/release/corrode --url https://example.com
-```
 
 ### Command Line Options
 
