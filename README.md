@@ -52,28 +52,21 @@ graph TD
 ### Scanning Workflow
 
 ```mermaid
-sequenceDiagram
-    participant User
-    participant CLI
-    participant Browser
-    participant Network
-    participant Scanner
-    participant Reporter
+graph TD
+    U[User Input] --> CLI[CLI Parser]
+    CLI --> B[Headless Browser]
+    B --> N[Network Tracking]
+    B --> S[HTML/Script Extraction]
+    S --> SC[Secret Scanner]
+    SC --> API[API Discovery]
+    API --> T[Security Tests]
+    T --> R[Reporter]
+    N --> R
+    B --> R
+    R --> OUT[JSON + Markdown Output]
 
-    User->>CLI: corrode --url example.com -v
-    CLI->>Browser: Create page
-    Browser->>Browser: Navigate to URL
-    Browser->>Network: Enable tracking
-    Browser->>Scanner: Extract HTML + scripts
-    Scanner->>Scanner: Regex + AST secret scan
-    Scanner->>Scanner: API discovery
-    Scanner->>Scanner: Run security tests
-    Scanner->>Reporter: Secrets
-    Scanner->>Reporter: API findings
-    Network->>Reporter: Network data
-    Browser->>Reporter: DOM/tech info
-    Reporter->>Reporter: Generate JSON & Markdown
-    Reporter->>User: Save to output folder
+    classDef green fill:#d1fae5,stroke:#059669,stroke-width:2px,color:#000
+    class U,CLI,B,N,S,SC,API,T,R,OUT green
 ```
 
 ### Secret Detection Pipeline
@@ -96,6 +89,9 @@ graph TD
     R --> F1[Secret Findings]
     R --> F2[Source Location]
     R --> F3[Severity Level]
+
+    classDef blue fill:#dbeafe,stroke:#2563eb,stroke-width:2px,color:#000
+    class S1,S2,S3,S4,S5,S6,S7,P,D1,D2,D3,R,F1,F2,F3 blue
 ```
 
 ## Features
@@ -138,7 +134,7 @@ cargo build --release
 | -------------------- | ------------------------------------------ |
 | Rust                 | 1.70+ (install from [rustup.rs](https://rustup.rs)) |
 | Chrome/Chromium      | Installed and discoverable (`/usr/bin/google-chrome` by default) |
-| OS                   | Linux/macOS (Windows planned)             |
+| OS                   | Linux/macOS                                |
 
 ## Usage
 
