@@ -7,6 +7,23 @@ Built with Rust and chromiumoxide for blazing-fast scanning with comprehensive s
 [![Rust](https://img.shields.io/badge/rust-1.70%2B-orange.svg)](https://www.rust-lang.org/)
 [![License: AGPL v3](https://img.shields.io/badge/license-AGPL--3.0-blue.svg)](LICENSE)
 
+## Project Structure
+
+```
+src/
+├── api/                  # API discovery + testing harnesses
+├── cli.rs                # CLI definitions
+├── config.rs             # Config normalization
+├── detectors/            # Secrets, DOM, JS (and AST) collectors
+├── network/              # Network monitor
+├── reporting/            # JSON/Markdown report writers
+├── scanner/              # Browser orchestration + workflow
+├── types.rs              # Shared data structures
+└── main.rs               # Entry point
+fixtures/                 # Static fixture pages for local testing
+corrode-output/           # Default output directory (per scan)
+```
+
 ## Architecture
 
 ### High-Level Architecture
@@ -37,15 +54,6 @@ graph LR
         style L fill:#fef9c3,stroke:#b45309,color:#111827
     end
 
-    subgraph Output["📊 Output Layer"]
-        M[Results Aggregator]
-        N[scan_result.json]
-        O[REPORT.md]
-
-        style N fill:#ede9fe,stroke:#6b21a8,color:#111827
-        style O fill:#ede9fe,stroke:#6b21a8,color:#111827
-    end
-
     A --> C
     C --> D
     C --> E
@@ -55,17 +63,15 @@ graph LR
     E --> J
     E --> K
     G --> L
-    H --> M
-    L --> M
-    J --> M
-    K --> M
-    M --> N
-    M --> O
+    H --> Results[Results Aggregator]
+    L --> Results
+    J --> Results
+    K --> Results
 
     style Input fill:#fef3c7,stroke:#92400e,color:#1f2937
     style Browser fill:#e0f2fe,stroke:#1d4ed8,color:#0f172a
     style Analysis fill:#e0e7ff,stroke:#312e81,color:#111827
-    style Output fill:#ede9fe,stroke:#6b21a8,color:#111827
+    style Results fill:#ede9fe,stroke:#6b21a8,color:#111827
 ```
 
 ### Scanning Workflow
@@ -105,11 +111,7 @@ sequenceDiagram
 
     Scanner->>APITest: Discovered API endpoints
 
-    par API Vulnerability Tests
-        APITest->>APITest: Test auth bypass
-        APITest->>APITest: Test IDOR
-        APITest->>APITest: Test mass assignment
-    end
+    APITest->>APITest: Run API tests (auth bypass, IDOR, mass assignment)
 
     Scanner-->>Reporter: Secrets found
     APITest-->>Reporter: Vulnerabilities found
