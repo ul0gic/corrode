@@ -12,20 +12,35 @@ lazy_static! {
         let mut m = HashMap::new();
         m.insert(
             "supabase_url",
-            Regex::new(r"https://[a-z0-9]+\\.supabase\\.co").unwrap(),
+            Regex::new(r"https://[a-z0-9]+\.supabase\.co").unwrap(),
         );
         m.insert("supabase_anon_key", Regex::new(r"sb[a-z]{38}").unwrap());
         m.insert(
             "jwt",
-            Regex::new(r"eyJ[A-Za-z0-9_\-]+\\.[A-Za-z0-9_\-]+\\.[A-Za-z0-9_\-]+").unwrap(),
+            Regex::new(r"eyJ[A-Za-z0-9_\-]+\.[A-Za-z0-9_\-]+\.[A-Za-z0-9_\-]+").unwrap(),
+        );
+        m.insert(
+            "supabase_publishable_key",
+            Regex::new(r"pk_(?:live|test)_[A-Za-z0-9]{20,}").unwrap(),
+        );
+        m.insert(
+            "openai_api_key",
+            Regex::new(r"sk-[A-Za-z0-9]{32,}").unwrap(),
+        );
+        m.insert(
+            "netlify_access_token",
+            Regex::new(r"nfp_[A-Za-z0-9]{20,}").unwrap(),
         );
         m.insert("firebase", Regex::new(r"AIza[0-9A-Za-z_\-]{35}").unwrap());
         m.insert("aws_key", Regex::new(r"AKIA[0-9A-Z]{16}").unwrap());
         m.insert(
             "aws_secret",
-            Regex::new(r"aws_secret_access_key\\s*=\\s*[A-Za-z0-9/+=]{40}").unwrap(),
+            Regex::new(r"aws_secret_access_key\s*=\s*[A-Za-z0-9/+=]{40}").unwrap(),
         );
-        m.insert("stripe", Regex::new(r"sk_live_[0-9a-zA-Z]{24,}").unwrap());
+        m.insert(
+            "stripe_secret_key",
+            Regex::new(r"sk_live_[0-9a-zA-Z]{24,}").unwrap(),
+        );
         m.insert(
             "stripe_restricted",
             Regex::new(r"rk_live_[0-9a-zA-Z]{24,}").unwrap(),
@@ -36,7 +51,7 @@ lazy_static! {
         );
         m.insert(
             "slack_webhook",
-            Regex::new(r"hooks\\.slack\\.com/services/T[a-zA-Z0-9_]+/B[a-zA-Z0-9_]+/[a-zA-Z0-9_]+")
+            Regex::new(r"hooks\.slack\.com/services/T[a-zA-Z0-9_]+/B[a-zA-Z0-9_]+/[a-zA-Z0-9_]+")
                 .unwrap(),
         );
         m.insert(
@@ -50,11 +65,11 @@ lazy_static! {
         m.insert("gitlab", Regex::new(r"glpat-[0-9a-zA-Z\-_]{20}").unwrap());
         m.insert(
             "discord",
-            Regex::new(r"discord(?:app)?\\.com/api/webhooks/[\\d]+/[\\w-]+").unwrap(),
+            Regex::new(r"discord(?:app)?\.com/api/webhooks/[\d]+/[\w-]+").unwrap(),
         );
         m.insert(
             "discord_token",
-            Regex::new(r"[MN][A-Za-z\\d]{23}\\.[\\w-]{6}\\.[\\w-]{27}").unwrap(),
+            Regex::new(r"[MN][A-Za-z\d]{23}\.[\w-]{6}\.[\w-]{27}").unwrap(),
         );
         m.insert(
             "heroku",
@@ -67,7 +82,7 @@ lazy_static! {
         );
         m.insert(
             "sendgrid",
-            Regex::new(r"SG\\.[A-Za-z0-9_-]{22}\\.[A-Za-z0-9_-]{43}").unwrap(),
+            Regex::new(r"SG\.[A-Za-z0-9_-]{22}\.[A-Za-z0-9_-]{43}").unwrap(),
         );
         m.insert("twilio", Regex::new(r"SK[0-9a-fA-F]{32}").unwrap());
         m.insert(
@@ -80,19 +95,19 @@ lazy_static! {
         );
         m.insert(
             "google_oauth",
-            Regex::new(r"[0-9]+-[0-9A-Za-z_]{32}\\.apps\\.googleusercontent\\.com").unwrap(),
+            Regex::new(r"[0-9]+-[0-9A-Za-z_]{32}\.apps\.googleusercontent\.com").unwrap(),
         );
         m.insert(
             "postgres_url",
-            Regex::new(r"postgres(?:ql)?://[^:]+:[^@]+@[^/]+/\\w+").unwrap(),
+            Regex::new(r"postgres(?:ql)?://[^:]+:[^@]+@[^/]+/\w+").unwrap(),
         );
         m.insert(
             "mongodb_url",
-            Regex::new(r"mongodb(?:\\+srv)?://[^:]+:[^@]+@[^/]+").unwrap(),
+            Regex::new(r"mongodb(?:\+srv)?://[^:]+:[^@]+@[^/]+").unwrap(),
         );
         m.insert(
             "mysql_url",
-            Regex::new(r"mysql://[^:]+:[^@]+@[^/]+/\\w+").unwrap(),
+            Regex::new(r"mysql://[^:]+:[^@]+@[^/]+/\w+").unwrap(),
         );
         m.insert(
             "redis_url",
@@ -100,11 +115,11 @@ lazy_static! {
         );
         m.insert(
             "bearer_token",
-            Regex::new(r"(?i)bearer\\s+[a-zA-Z0-9\-._~+/]+=*").unwrap(),
+            Regex::new(r"(?i)bearer\s+[a-zA-Z0-9\-._~+/]+=*").unwrap(),
         );
         m.insert(
             "basic_auth",
-            Regex::new(r"(?i)basic\\s+[a-zA-Z0-9+/]+=*").unwrap(),
+            Regex::new(r"(?i)basic\s+[a-zA-Z0-9+/]+=*").unwrap(),
         );
         m.insert(
             "aws_arn",
@@ -112,19 +127,19 @@ lazy_static! {
         );
         m.insert(
             "jwt_in_url",
-            Regex::new(r"[?&](?:token|jwt|access_token|id_token)=eyJ[A-Za-z0-9_\-]+\\.[A-Za-z0-9_\-]+\\.[A-Za-z0-9_\-]+").unwrap(),
+            Regex::new(r"[?&](?:token|jwt|access_token|id_token)=eyJ[A-Za-z0-9_\-]+\.[A-Za-z0-9_\-]+\.[A-Za-z0-9_\-]+").unwrap(),
         );
         m.insert(
             "ip_address",
-            Regex::new(r"\\b(?:[0-9]{1,3}\\.){3}[0-9]{1,3}\\b").unwrap(),
+            Regex::new(r"\b(?:[0-9]{1,3}\.){3}[0-9]{1,3}\b").unwrap(),
         );
         m
     };
     static ref COMMENT_SINGLE: Regex = Regex::new(r"//(.+)").unwrap();
-    static ref COMMENT_MULTI: Regex = Regex::new(r"/\\*([\\s\\S]*?)\\*/").unwrap();
+    static ref COMMENT_MULTI: Regex = Regex::new(r"/\*([\s\S]*?)\*/").unwrap();
 }
 
-fn is_service_role_jwt(jwt: &str) -> bool {
+fn jwt_has_role(jwt: &str, role: &str) -> bool {
     let parts: Vec<&str> = jwt.split('.').collect();
     if parts.len() != 3 {
         return false;
@@ -132,11 +147,19 @@ fn is_service_role_jwt(jwt: &str) -> bool {
 
     if let Ok(decoded) = general_purpose::URL_SAFE_NO_PAD.decode(parts[1]) {
         if let Ok(payload) = String::from_utf8(decoded) {
-            return payload.contains(r#"\"role\":\"service_role\""#)
-                || payload.contains(r#"\"role\": "service_role""#);
+            let role_marker = format!(r#""role":"{}""#, role);
+            return payload.contains(role_marker.as_str());
         }
     }
     false
+}
+
+fn is_service_role_jwt(jwt: &str) -> bool {
+    jwt_has_role(jwt, "service_role")
+}
+
+fn is_anon_jwt(jwt: &str) -> bool {
+    jwt_has_role(jwt, "anon")
 }
 
 #[derive(Default)]
@@ -172,6 +195,11 @@ impl SecretScanner {
                         .filter(|jwt| is_service_role_jwt(jwt))
                         .cloned()
                         .collect();
+                    let anon_jwts: Vec<String> = matches_vec
+                        .iter()
+                        .filter(|jwt| is_anon_jwt(jwt))
+                        .cloned()
+                        .collect();
 
                     if !service_role_jwts.is_empty() {
                         findings
@@ -180,6 +208,16 @@ impl SecretScanner {
                             .push(SecretFinding {
                                 source: source.to_string(),
                                 matches: service_role_jwts,
+                            });
+                    }
+
+                    if !anon_jwts.is_empty() {
+                        findings
+                            .entry("supabase_anon_jwt".to_string())
+                            .or_insert_with(Vec::new)
+                            .push(SecretFinding {
+                                source: source.to_string(),
+                                matches: anon_jwts,
                             });
                     }
                 }

@@ -250,6 +250,7 @@ async fn scan_url(
         debug_flags,
         api_endpoints,
         technologies,
+        ast_findings,
     } = script_data;
 
     let tester = ApiTester::new();
@@ -364,6 +365,7 @@ async fn scan_url(
             source_maps,
             debug_mode: debug_flags,
             api_endpoints: api_endpoints.clone(),
+            ast_findings,
         },
         security,
         technologies,

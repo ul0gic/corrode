@@ -5,6 +5,15 @@ use std::path::Path;
 
 use crate::types::{ApiTestResult, ScanResult, Vulnerability};
 
+fn severity_rank(label: &str) -> u8 {
+    match label.to_lowercase().as_str() {
+        "critical" => 3,
+        "high" => 2,
+        "medium" => 1,
+        _ => 0,
+    }
+}
+
 pub fn write(result: &ScanResult, base_output_dir: &Path) -> Result<()> {
     let mut report = Vec::new();
 
@@ -35,16 +44,43 @@ pub fn write(result: &ScanResult, base_output_dir: &Path) -> Result<()> {
         .iter()
         .filter(|v| v.severity == "low")
         .count();
+
+    let api_critical = result
+        .api_tests
+        .iter()
+        .filter(|t| t.vulnerable && t.severity.eq_ignore_ascii_case("critical"))
+        .count();
+    let api_high = result
+        .api_tests
+        .iter()
+        .filter(|t| t.vulnerable && t.severity.eq_ignore_ascii_case("high"))
+        .count();
+    let api_medium = result
+        .api_tests
+        .iter()
+        .filter(|t| t.vulnerable && t.severity.eq_ignore_ascii_case("medium"))
+        .count();
+
     let secret_count = result.secrets.len();
 
-    let risk_level = if critical_vulns > 0 {
-        "🔴 CRITICAL"
-    } else if high_vulns > 0 {
-        "🟠 HIGH"
-    } else if medium_vulns > 0 {
-        "🟡 MEDIUM"
-    } else {
-        "🟢 LOW"
+    let secret_has_service_role = result.secrets.contains_key("supabase_service_role");
+
+    let mut highest = 0;
+    if secret_has_service_role {
+        highest = highest.max(3);
+    }
+    for v in &result.vulnerabilities {
+        highest = highest.max(severity_rank(&v.severity));
+    }
+    for test in result.api_tests.iter().filter(|t| t.vulnerable) {
+        highest = highest.max(severity_rank(&test.severity));
+    }
+
+    let risk_level = match highest {
+        3 => "🔴 CRITICAL",
+        2 => "🟠 HIGH",
+        1 => "🟡 MEDIUM",
+        _ => "🟢 LOW",
     };
 
     report.push(format!("**Risk Level**: {}\n", risk_level));
@@ -52,11 +88,47 @@ pub fn write(result: &ScanResult, base_output_dir: &Path) -> Result<()> {
     report.push(format!("- High Vulnerabilities: {}", high_vulns));
     report.push(format!("- Medium Vulnerabilities: {}", medium_vulns));
     report.push(format!("- Low Vulnerabilities: {}", low_vulns));
+    report.push(format!("- Critical API Findings: {}", api_critical));
+    report.push(format!("- High API Findings: {}", api_high));
+    report.push(format!("- Medium API Findings: {}", api_medium));
     report.push(format!("- Secret Types Found: {}", secret_count));
     report.push(format!(
         "- Technologies Detected: {}\n",
         result.technologies.len()
     ));
+
+    // Key summary box: show one value for every detected secret type
+    let mut key_entries: Vec<(String, String)> = Vec::new();
+    for (secret_type, findings) in &result.secrets {
+        if let Some(first) = findings.first() {
+            if let Some(value) = first.matches.first() {
+                key_entries.push((secret_type.clone(), value.clone()));
+            }
+        }
+    }
+
+    if !key_entries.is_empty() {
+        let content_width = key_entries
+            .iter()
+            .map(|(k, v)| k.len() + 2 + v.len())
+            .max()
+            .unwrap_or(20)
+            .max(20);
+        let border = format!("+{}+", "-".repeat(content_width + 2));
+        report.push("```\n".to_string());
+        report.push(border.clone());
+        let title = "Keys Identified";
+        let title_pad = content_width.saturating_sub(title.len());
+        report.push(format!("| {}{} |", title, " ".repeat(title_pad)));
+        report.push(border.clone());
+        for (label, value) in key_entries {
+            let entry = format!("{}: {}", label, value);
+            let pad = content_width.saturating_sub(entry.len());
+            report.push(format!("| {}{} |", entry, " ".repeat(pad)));
+        }
+        report.push(border);
+        report.push("```\n".to_string());
+    }
 
     if !result.secrets.is_empty() {
         report.push("---\n## 🔑 Secrets & Credentials Found\n".to_string());
@@ -178,14 +250,12 @@ pub fn write(result: &ScanResult, base_output_dir: &Path) -> Result<()> {
         }
     }
 
-    if !result.comments.is_empty() {
-        report.push("---\n## 💬 JavaScript Comments\n".to_string());
-        for comment in &result.comments {
-            report.push(format!(
-                "### {} comment in {}",
-                comment.comment_type, comment.source
-            ));
-            report.push(format!("```\n{}\n```\n", comment.content));
+    if !result.javascript.ast_findings.is_empty() {
+        report.push("---\n## 🧠 JavaScript AST Findings\n".to_string());
+        for finding in &result.javascript.ast_findings {
+            report.push(format!("### {} @ {}", finding.kind, finding.location));
+            report.push(format!("**Value**: `{}`", finding.value));
+            report.push(format!("**Context**: {}\n", finding.context));
         }
     }
 

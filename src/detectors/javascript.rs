@@ -3,12 +3,14 @@ use chromiumoxide::Page;
 use reqwest;
 use serde_json::Value;
 use std::collections::HashMap;
+use std::fs;
 use tokio::time::{self, Duration};
+use url::Url;
 
 use crate::api::discovery::extract_api_endpoints;
-use crate::detectors::secrets::SecretScanner;
+use crate::detectors::{ast, secrets::SecretScanner};
 use crate::scanner::page_utils;
-use crate::types::DiscoveredEndpoint;
+use crate::types::{AstFinding, DiscoveredEndpoint};
 
 pub struct ScriptArtifacts {
     pub script_count: usize,
@@ -17,6 +19,7 @@ pub struct ScriptArtifacts {
     pub debug_flags: Vec<String>,
     pub api_endpoints: Vec<DiscoveredEndpoint>,
     pub technologies: Vec<String>,
+    pub ast_findings: Vec<AstFinding>,
 }
 
 pub async fn collect(page: &Page, scanner: &SecretScanner) -> Result<ScriptArtifacts> {
@@ -31,12 +34,17 @@ pub async fn collect(page: &Page, scanner: &SecretScanner) -> Result<ScriptArtif
     let scripts_array: Vec<Value> = serde_json::from_value(scripts).unwrap_or_default();
     let mut source_maps = Vec::new();
     let mut api_endpoints = Vec::new();
+    let mut ast_findings = Vec::new();
 
     for (idx, script) in scripts_array.iter().enumerate() {
         if let Some(content) = script.get("content").and_then(|v| v.as_str()) {
             scanner.scan_text(content, "Inline Script").await;
             scanner.extract_comments(content, "Inline Script").await;
             api_endpoints.extend(extract_api_endpoints(
+                content,
+                &format!("inline-script-{}", idx),
+            ));
+            ast_findings.extend(ast::analyze_script(
                 content,
                 &format!("inline-script-{}", idx),
             ));
@@ -48,19 +56,38 @@ pub async fn collect(page: &Page, scanner: &SecretScanner) -> Result<ScriptArtif
                     source_maps.push(src.to_string());
                 }
 
-                if let Ok(Ok(resp)) =
-                    time::timeout(Duration::from_secs(10), reqwest::get(src)).await
-                {
-                    if let Ok(text) = resp.text().await {
-                        scanner.scan_text(&text, &format!("Script: {}", src)).await;
-                        scanner
-                            .extract_comments(&text, &format!("Script: {}", src))
-                            .await;
-                        api_endpoints.extend(extract_api_endpoints(
-                            &text,
-                            &format!("external-script-{}", idx),
-                        ));
+                let mut fetched = None;
+
+                if let Ok(url) = Url::parse(src) {
+                    if url.scheme() == "file" {
+                        if let Ok(path) = url.to_file_path() {
+                            if let Ok(text) = fs::read_to_string(&path) {
+                                fetched = Some(text);
+                            }
+                        }
                     }
+                }
+
+                if fetched.is_none() {
+                    if let Ok(Ok(resp)) =
+                        time::timeout(Duration::from_secs(10), reqwest::get(src)).await
+                    {
+                        if let Ok(text) = resp.text().await {
+                            fetched = Some(text);
+                        }
+                    }
+                }
+
+                if let Some(text) = fetched {
+                    scanner.scan_text(&text, &format!("Script: {}", src)).await;
+                    scanner
+                        .extract_comments(&text, &format!("Script: {}", src))
+                        .await;
+                    api_endpoints.extend(extract_api_endpoints(
+                        &text,
+                        &format!("external-script-{}", idx),
+                    ));
+                    ast_findings.extend(ast::analyze_script(&text, src));
                 }
             }
         }
@@ -137,5 +164,6 @@ pub async fn collect(page: &Page, scanner: &SecretScanner) -> Result<ScriptArtif
         debug_flags: debug_mode,
         api_endpoints,
         technologies,
+        ast_findings,
     })
 }

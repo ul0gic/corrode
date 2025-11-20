@@ -101,12 +101,21 @@ pub struct CookieInfo {
     pub same_site: String,
 }
 
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct AstFinding {
+    pub kind: String,
+    pub value: String,
+    pub location: String,
+    pub context: String,
+}
+
 #[derive(Debug, Serialize, Deserialize, Clone, Default)]
 pub struct JavaScriptAnalysis {
     pub window_objects: HashMap<String, String>,
     pub source_maps: Vec<String>,
     pub debug_mode: Vec<String>,
     pub api_endpoints: Vec<DiscoveredEndpoint>,
+    pub ast_findings: Vec<AstFinding>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]

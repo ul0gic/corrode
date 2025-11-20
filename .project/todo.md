@@ -77,6 +77,9 @@ src/
 
 ## Detection Enhancements
 - Add AST-based JavaScript analysis (via swc or similar) to find deeply embedded secrets/endpoints beyond regex patterns.
+  - Parse inline/external scripts and walk the AST for fetch/axios/xhr URLs, literal URLs, and credential-like identifiers.
+  - Tag findings with origin + line/col for triage and surface them alongside regex-based secret detection.
+  - Keep parsing resilient (skip oversized/invalid scripts) so scans remain fast even on noisy bundles.
 - Beef up detection logic: expand secret patterns, storage/DOM heuristics, and wire in remaining API tests (`test_auth_differences`, `test_mass_assignment`).
 - Fix network header capture in `network::monitor` so reports include request/response metadata.
 
