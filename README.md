@@ -4,6 +4,9 @@
 
 Built with Rust and chromiumoxide for blazing-fast scanning with comprehensive security analysis.
 
+[![Rust](https://img.shields.io/badge/rust-1.70%2B-orange.svg)](https://www.rust-lang.org/)
+[![License: AGPL v3](https://img.shields.io/badge/license-AGPL--3.0-blue.svg)](LICENSE)
+
 ## Architecture
 
 ### High-Level Architecture
@@ -15,8 +18,8 @@ graph LR
     end
 
     subgraph Browser["🌐 Browser Layer"]
-        C[Chrome/Chromium<br/>Headless Browser]
-        style C fill:#4285F4,stroke:#1967D2,color:#fff
+        C[Chrome/Chromium Headless Browser]
+        style C fill:#e0f2fe,stroke:#1d4ed8,color:#0f172a
     end
 
     subgraph Analysis["🔍 Analysis Engine"]
@@ -29,9 +32,9 @@ graph LR
         K[Security Analysis]
         L[API Vuln Tester]
 
-        style D fill:#0EA5E9,stroke:#0369A1,color:#fff
-        style H fill:#EF4444,stroke:#991B1B,color:#fff
-        style L fill:#F59E0B,stroke:#B45309,color:#fff
+        style D fill:#cffafe,stroke:#0ea5e9,color:#0f172a
+        style H fill:#fee2e2,stroke:#991b1b,color:#111827
+        style L fill:#fef9c3,stroke:#b45309,color:#111827
     end
 
     subgraph Output["📊 Output Layer"]
@@ -39,8 +42,8 @@ graph LR
         N[scan_result.json]
         O[REPORT.md]
 
-        style N fill:#1967D2,stroke:#0D47A1,color:#fff
-        style O fill:#1967D2,stroke:#0D47A1,color:#fff
+        style N fill:#ede9fe,stroke:#6b21a8,color:#111827
+        style O fill:#ede9fe,stroke:#6b21a8,color:#111827
     end
 
     A --> C
@@ -59,10 +62,10 @@ graph LR
     M --> N
     M --> O
 
-    style Input fill:#f8efd4,stroke:#a16207,color:#1f2937
-    style Browser fill:#0f172a,stroke:#1d4ed8,color:#e0f2fe
-    style Analysis fill:#0f172a,stroke:#0ea5e9,color:#e0f2fe
-    style Output fill:#0f172a,stroke:#7c3aed,color:#ede9fe
+    style Input fill:#fef3c7,stroke:#92400e,color:#1f2937
+    style Browser fill:#e0f2fe,stroke:#1d4ed8,color:#0f172a
+    style Analysis fill:#e0e7ff,stroke:#312e81,color:#111827
+    style Output fill:#ede9fe,stroke:#6b21a8,color:#111827
 ```
 
 ### Scanning Workflow
@@ -168,12 +171,12 @@ flowchart LR
     D5 --> R1
     R1 --> R2 --> R3 --> R4
 
-    style Sources fill:#E8E8E8,stroke:#1967D2
-    style Patterns fill:#D3D3D3,stroke:#E37400
-    style Detection fill:#C0C0C0,stroke:#EA4335
-    style Results fill:#B8B8B8,stroke:#34A853
-    style D1 fill:#FBBC04,stroke:#E37400,color:#000
-    style D4 fill:#FBBC04,stroke:#E37400,color:#000
+    style Sources fill:#e0f2fe,stroke:#1d4ed8,color:#0f172a
+    style Patterns fill:#fef3c7,stroke:#92400e,color:#111827
+    style Detection fill:#fee2e2,stroke:#b91c1c,color:#111827
+    style Results fill:#ede9fe,stroke:#6b21a8,color:#111827
+    style D1 fill:#fef9c3,stroke:#b45309,color:#111827
+    style D4 fill:#fef9c3,stroke:#b45309,color:#111827
 ```
 
 ## Features
@@ -196,155 +199,63 @@ flowchart LR
 
 ## Installation
 
-### Method 1: Quick Install (Recommended)
-
-Install Corrode globally so you can run it from anywhere with just `corrode --url https://example.com`:
+### Install via Cargo (planned crates.io release)
 
 ```bash
-# Clone the repository
-git clone https://github.com/ul0gic/corrode.git
-cd corrode
-
-# Install using the install script
-./install.sh
-```
-
-Or using Make:
-```bash
-make install
-```
-
-After installation, you can run Corrode with an explicit URL:
-```bash
-corrode --url https://example.com
-corrode --url https://example.com --verbose
-```
-
-### Method 2: Manual Installation
-
-```bash
-# Build the release binary
-cargo build --release
-
-# Copy to your PATH (requires sudo)
-sudo cp target/release/corrode /usr/local/bin/
-sudo chmod +x /usr/local/bin/corrode
-
-# Now you can use: corrode
-```
-
-### Method 3: Local Build (No Installation)
-
-```bash
-# Build the release binary
-cargo build --release
-
-# Run from the project directory
-./target/release/corrode --help
-```
-
-### Method 4: Cargo Install (coming soon)
-
-```bash
-# Install directly from the repository
-cargo install --path . --locked
-
-# Or once published to crates.io:
 cargo install corrode
 ```
 
-### Uninstallation
-
+For local development:
 ```bash
-# Using make
-make uninstall
-
-# Or manually
-sudo rm /usr/local/bin/corrode
+git clone https://github.com/ul0gic/corrode.git
+cd corrode
+cargo build --release
+# run locally
+./target/release/corrode --url https://example.com
 ```
 
-### Build Requirements
+### Requirements
 
-- Rust 1.70+ (install from [rustup.rs](https://rustup.rs))
-- Chrome/Chromium browser installed at `/usr/bin/google-chrome`
-- Linux/macOS (Windows support planned)
-
-### Available Make Commands
-
-Once you have the repository cloned:
-
-```bash
-make help       # Show all available commands
-make build      # Build debug binary
-make release    # Build optimized release binary
-make install    # Install to /usr/local/bin
-make uninstall  # Remove from /usr/local/bin
-make clean      # Clean build artifacts
-make test       # Run tests
-```
+| Requirement          | Details                                    |
+| -------------------- | ------------------------------------------ |
+| Rust                 | 1.70+ (install from [rustup.rs](https://rustup.rs)) |
+| Chrome/Chromium      | Installed and discoverable (`/usr/bin/google-chrome` by default) |
+| OS                   | Linux/macOS (Windows planned)             |
 
 ## Usage
 
 ### Quick Start
 
-Run Corrode against an explicit target URL:
-
+Local build example:
 ```bash
 ./target/release/corrode --url https://example.com
 ```
 
 ### Command Line Options
 
-```
-High-performance security scanner for exposed credentials and vulnerabilities
-
-Usage: corrode [OPTIONS] --url <URL>
-
-Options:
-      --url <URL>
-          Target URL to scan (https://example.com)
-  -o, --output <DIR>
-          Output directory for scan results
-
-          Results saved as: <OUTPUT>/<domain>/scan_result.json and REPORT.md
-
-          [default: corrode-output]
-
-  -t, --timeout <SECS>
-          Timeout for page load in seconds
-
-          Maximum time to wait for a page to load before moving on.
-
-          [default: 30]
-
-  -v, --verbose
-          Enable verbose output
-
-          Shows detailed progress, found secrets, and API test results in real-time.
-
-  -h, --help
-          Print help (see a summary with '-h')
-
-  -V, --version
-          Print version
-```
+| Flag / Option        | Description                                                             | Default           | Required |
+| -------------------- | ----------------------------------------------------------------------- | ----------------- | -------- |
+| `--url <URL>`        | Target URL to scan                                                      | –                 | ✅       |
+| `-o, --output <DIR>` | Output directory (`<output>/<domain>/scan_result.json`, `REPORT.md`)    | `corrode-output`  |          |
+| `-t, --timeout <s>`  | Page-load timeout in seconds                                            | `30`              |          |
+| `-v, --verbose`      | Verbose progress + findings                                             | off               |          |
+| `-h, --help`         | Show help                                                               | –                 |          |
+| `-V, --version`      | Show version                                                            | –                 |          |
 
 ### Usage Examples
 
-**Standard scan:**
-```bash
-./target/release/corrode --url https://example.com
-```
-
-**Custom output directory:**
-```bash
-./target/release/corrode --url https://example.com -o recon-$(date +%Y%m%d)
-```
-
-**Extended timeout for slow sites:**
-```bash
-./target/release/corrode --url https://example.com -t 60 -v
-```
+- Standard scan:
+  ```bash
+  ./target/release/corrode --url https://example.com
+  ```
+- Custom output directory:
+  ```bash
+  ./target/release/corrode --url https://example.com -o recon-$(date +%Y%m%d)
+  ```
+- Extended timeout for slow sites:
+  ```bash
+  ./target/release/corrode --url https://example.com -t 60 -v
+  ```
 
 ## Detected Secrets & Credentials
 
