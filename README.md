@@ -25,14 +25,13 @@ graph LR
         F[Script Extractor]
         G[API Discovery]
         H[Secret Scanner]
-        I[Comment Extractor]
         J[Technology Detection]
         K[Security Analysis]
         L[API Vuln Tester]
 
-        style D fill:#34A853,stroke:#0D652D,color:#fff
-        style H fill:#EA4335,stroke:#A50E0E,color:#fff
-        style L fill:#FBBC04,stroke:#E37400,color:#fff
+        style D fill:#0EA5E9,stroke:#0369A1,color:#fff
+        style H fill:#EF4444,stroke:#991B1B,color:#fff
+        style L fill:#F59E0B,stroke:#B45309,color:#fff
     end
 
     subgraph Output["📊 Output Layer"]
@@ -50,22 +49,20 @@ graph LR
     C --> F
     D --> G
     F --> H
-    F --> I
     E --> J
     E --> K
     G --> L
     H --> M
     L --> M
-    I --> M
     J --> M
     K --> M
     M --> N
     M --> O
 
-    style Input fill:#E8E8E8,stroke:#5F6368
-    style Browser fill:#D3D3D3,stroke:#1967D2
-    style Analysis fill:#C0C0C0,stroke:#E37400
-    style Output fill:#B8B8B8,stroke:#0D652D
+    style Input fill:#f8efd4,stroke:#a16207,color:#1f2937
+    style Browser fill:#0f172a,stroke:#1d4ed8,color:#e0f2fe
+    style Analysis fill:#0f172a,stroke:#0ea5e9,color:#e0f2fe
+    style Output fill:#0f172a,stroke:#7c3aed,color:#ede9fe
 ```
 
 ### Scanning Workflow
@@ -96,7 +93,6 @@ sequenceDiagram
         Page->>Scanner: Extract inline scripts
         Page->>Scanner: Fetch external scripts
         Scanner->>Scanner: Scan for 30+ secret patterns
-        Scanner->>Scanner: Extract JS comments
 
         Page->>Page: Extract DOM elements
         Page->>Page: Detect technologies
@@ -188,12 +184,10 @@ flowchart LR
 - 🌐 **Network Monitoring** - Tracks all HTTP requests, API calls, and third-party domains
 - 🎯 **Pattern Matching** - Detects 30+ types of secrets and credentials
 - 📊 **Comprehensive Reporting** - JSON results and detailed Markdown reports per site
-- 🚀 **High-Concurrency Scanning** - Tune the number of headless Chromium instances per URL for faster analysis
 
 ### Advanced Analysis
 - 🔐 **API Discovery** - Automatically discovers API endpoints from JavaScript code
 - 🎯 **API Vulnerability Testing** - Tests for authentication bypass, IDOR, and other API vulnerabilities
-- 💬 **Comment Extraction** - Extracts JavaScript comments that may contain sensitive information
 - 🛠️ **Technology Detection** - Identifies 40+ frameworks, libraries, and services in use
 - 🔎 **DOM Analysis** - Analyzes forms, hidden inputs, iframes, meta tags, and data attributes
 - 🍪 **Cookie Security Analysis** - Checks for insecure cookie configurations

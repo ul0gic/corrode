@@ -14,6 +14,54 @@ fn severity_rank(label: &str) -> u8 {
     }
 }
 
+fn wrap_value_chunks(value: &str, max: usize) -> Vec<String> {
+    if max == 0 {
+        return vec![value.to_string()];
+    }
+    let bytes = value.as_bytes();
+    let mut out = Vec::new();
+    let mut start = 0;
+    while start < bytes.len() {
+        let end = (start + max).min(bytes.len());
+        out.push(String::from_utf8_lossy(&bytes[start..end]).to_string());
+        start = end;
+    }
+    out
+}
+
+fn wrap_entry(label: &str, value: &str, max_line: usize) -> Vec<String> {
+    let mut lines = Vec::new();
+    let first_room = max_line.saturating_sub(label.len() + 2).max(8); // reserve space for value on first line
+    let mut remaining = value.to_string();
+
+    if !remaining.is_empty() {
+        let chunks = wrap_value_chunks(&remaining, first_room);
+        if let Some((first, rest)) = chunks.split_first() {
+            lines.push(format!("{label}: {first}"));
+            if !rest.is_empty() {
+                remaining = rest.join("");
+            } else {
+                remaining.clear();
+            }
+        }
+    } else {
+        lines.push(format!("{label}:"));
+    }
+
+    let cont_room = max_line.saturating_sub(2).max(8);
+    while !remaining.is_empty() {
+        let chunks = wrap_value_chunks(&remaining, cont_room);
+        if let Some((first, tail)) = chunks.split_first() {
+            lines.push(format!("  {first}"));
+            remaining = tail.join("");
+        } else {
+            break;
+        }
+    }
+
+    lines
+}
+
 pub fn write(result: &ScanResult, base_output_dir: &Path) -> Result<()> {
     let mut report = Vec::new();
 
@@ -98,22 +146,26 @@ pub fn write(result: &ScanResult, base_output_dir: &Path) -> Result<()> {
     ));
 
     // Key summary box: show one value for every detected secret type
-    let mut key_entries: Vec<(String, String)> = Vec::new();
+    let max_line_width = 96;
+    let mut key_lines: Vec<String> = Vec::new();
     for (secret_type, findings) in &result.secrets {
         if let Some(first) = findings.first() {
             if let Some(value) = first.matches.first() {
-                key_entries.push((secret_type.clone(), value.clone()));
+                for line in wrap_entry(secret_type, value, max_line_width) {
+                    key_lines.push(line);
+                }
             }
         }
     }
 
-    if !key_entries.is_empty() {
-        let content_width = key_entries
+    if !key_lines.is_empty() {
+        let content_width = key_lines
             .iter()
-            .map(|(k, v)| k.len() + 2 + v.len())
+            .map(|l| l.len())
             .max()
             .unwrap_or(20)
-            .max(20);
+            .max(20)
+            .min(max_line_width);
         let border = format!("+{}+", "-".repeat(content_width + 2));
         report.push("```\n".to_string());
         report.push(border.clone());
@@ -121,10 +173,9 @@ pub fn write(result: &ScanResult, base_output_dir: &Path) -> Result<()> {
         let title_pad = content_width.saturating_sub(title.len());
         report.push(format!("| {}{} |", title, " ".repeat(title_pad)));
         report.push(border.clone());
-        for (label, value) in key_entries {
-            let entry = format!("{}: {}", label, value);
-            let pad = content_width.saturating_sub(entry.len());
-            report.push(format!("| {}{} |", entry, " ".repeat(pad)));
+        for line in key_lines {
+            let pad = content_width.saturating_sub(line.len());
+            report.push(format!("| {}{} |", line, " ".repeat(pad)));
         }
         report.push(border);
         report.push("```\n".to_string());

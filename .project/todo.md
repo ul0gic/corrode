@@ -80,6 +80,7 @@ src/
   - Parse inline/external scripts and walk the AST for fetch/axios/xhr URLs, literal URLs, and credential-like identifiers.
   - Tag findings with origin + line/col for triage and surface them alongside regex-based secret detection.
   - Keep parsing resilient (skip oversized/invalid scripts) so scans remain fast even on noisy bundles.
+- ✅ Fixtures added (`fixtures/sample.html/js`) and AST wired; secrets now detected (service_role/anon/publishable, OpenAI, Netlify, Stripe). Next: trim/no-log AST output when only third-party chatter to avoid noisy reports.
 - Beef up detection logic: expand secret patterns, storage/DOM heuristics, and wire in remaining API tests (`test_auth_differences`, `test_mass_assignment`).
 - Fix network header capture in `network::monitor` so reports include request/response metadata.
 
