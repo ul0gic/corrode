@@ -1,4 +1,5 @@
 use anyhow::Result;
+use serde_json;
 use std::fs;
 use std::path::Path;
 
@@ -7,12 +8,12 @@ use crate::types::{ApiTestResult, ScanResult, Vulnerability};
 pub fn write(result: &ScanResult, base_output_dir: &Path) -> Result<()> {
     let mut report = Vec::new();
 
-    report.push(format!("# 🦀 Corrode Security Scan Report\n"));
+    report.push("# 🦀 Corrode Security Scan Report\n".to_string());
     report.push(format!("**Target**: {}", result.url));
     report.push(format!("**Scan Date**: {}", result.timestamp));
-    report.push(format!("**Scanner**: Corrode v0.1.0\n"));
+    report.push("**Scanner**: Corrode v0.1.0\n".to_string());
 
-    report.push(format!("---\n## Executive Summary\n"));
+    report.push("---\n## Executive Summary\n".to_string());
 
     let critical_vulns = result
         .vulnerabilities
@@ -58,10 +59,10 @@ pub fn write(result: &ScanResult, base_output_dir: &Path) -> Result<()> {
     ));
 
     if !result.secrets.is_empty() {
-        report.push(format!("---\n## 🔑 Secrets & Credentials Found\n"));
-        report.push(format!(
-            "⚠️ **CRITICAL**: The following secrets were exposed in the application:\n"
-        ));
+        report.push("---\n## 🔑 Secrets & Credentials Found\n".to_string());
+        report.push(
+            "⚠️ **CRITICAL**: The following secrets were exposed in the application\n".to_string(),
+        );
 
         for (secret_type, findings) in &result.secrets {
             let total_matches: usize = findings.iter().map(|f| f.matches.len()).sum();
@@ -84,7 +85,7 @@ pub fn write(result: &ScanResult, base_output_dir: &Path) -> Result<()> {
     }
 
     if !result.vulnerabilities.is_empty() {
-        report.push(format!("---\n## 🚨 Vulnerabilities\n"));
+        report.push("---\n## 🚨 Vulnerabilities\n".to_string());
 
         for severity in &["critical", "high", "medium", "low"] {
             let vulns: Vec<&Vulnerability> = result
@@ -120,7 +121,7 @@ pub fn write(result: &ScanResult, base_output_dir: &Path) -> Result<()> {
     }
 
     if !result.api_tests.is_empty() {
-        report.push(format!("---\n## 🎯 API Security Tests\n"));
+        report.push("---\n## 🎯 API Security Tests\n".to_string());
 
         let critical_api = result
             .api_tests
@@ -178,7 +179,7 @@ pub fn write(result: &ScanResult, base_output_dir: &Path) -> Result<()> {
     }
 
     if !result.comments.is_empty() {
-        report.push(format!("---\n## 💬 JavaScript Comments\n"));
+        report.push("---\n## 💬 JavaScript Comments\n".to_string());
         for comment in &result.comments {
             report.push(format!(
                 "### {} comment in {}",
@@ -188,7 +189,7 @@ pub fn write(result: &ScanResult, base_output_dir: &Path) -> Result<()> {
         }
     }
 
-    report.push(format!("---\n## 📡 Network Insights\n"));
+    report.push("---\n## 📡 Network Insights\n".to_string());
     report.push(format!(
         "- Total Requests: {}",
         result.network.total_requests
@@ -203,13 +204,13 @@ pub fn write(result: &ScanResult, base_output_dir: &Path) -> Result<()> {
     ));
 
     if !result.javascript.source_maps.is_empty() {
-        report.push(format!("---\n## 🗺 Source Maps\n"));
+        report.push("---\n## 🗺 Source Maps\n".to_string());
         for map in &result.javascript.source_maps {
             report.push(format!("- {}", map));
         }
     }
 
-    report.push(format!("---\n## 🧾 DOM Insights\n"));
+    report.push("---\n## 🧾 DOM Insights\n".to_string());
     report.push(format!("- Scripts: {}", result.dom.scripts));
     report.push(format!("- Forms: {}", result.dom.forms.len()));
     report.push(format!(
@@ -219,7 +220,7 @@ pub fn write(result: &ScanResult, base_output_dir: &Path) -> Result<()> {
     report.push(format!("- iframes: {}", result.dom.iframes.len()));
 
     if !result.dom.data_attributes.is_empty() {
-        report.push(format!("### Data Attributes\n"));
+        report.push("### Data Attributes\n".to_string());
         for attr in &result.dom.data_attributes {
             report.push(format!(
                 "- {}: {}",
@@ -230,30 +231,20 @@ pub fn write(result: &ScanResult, base_output_dir: &Path) -> Result<()> {
     }
 
     if !result.technologies.is_empty() {
-        report.push(format!("---\n## 🛠️ Technology Stack\n"));
+        report.push("---\n## 🛠️ Technology Stack\n".to_string());
         for tech in &result.technologies {
             report.push(format!("- {}", tech));
         }
         report.push(String::new());
     }
 
-    report.push(format!("---\n## 💡 Recommendations\n"));
-    report.push(format!(
-        "1. **Immediately rotate** any exposed secrets and credentials"
-    ));
-    report.push(format!(
-        "2. Remove or restrict access to source maps in production"
-    ));
-    report.push(format!(
-        "3. Implement proper security headers (CSP, HSTS, etc.)"
-    ));
-    report.push(format!(
-        "4. Review and fix all HIGH and CRITICAL vulnerabilities"
-    ));
-    report.push(format!("5. Disable debug mode in production"));
-    report.push(format!(
-        "6. Use HttpOnly, Secure, and SameSite flags on cookies\n"
-    ));
+    report.push("---\n## 💡 Recommendations\n".to_string());
+    report.push("1. **Immediately rotate** any exposed secrets and credentials".to_string());
+    report.push("2. Remove or restrict access to source maps in production".to_string());
+    report.push("3. Implement proper security headers (CSP, HSTS, etc.)".to_string());
+    report.push("4. Review and fix all HIGH and CRITICAL vulnerabilities".to_string());
+    report.push("5. Disable debug mode in production".to_string());
+    report.push("6. Use HttpOnly, Secure, and SameSite flags on cookies\n".to_string());
 
     let domain = url::Url::parse(&result.url)
         .ok()

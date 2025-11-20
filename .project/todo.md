@@ -74,6 +74,24 @@ src/
 - Remove unused `src/vulnerability.rs` or repurpose it for vulnerability definitions/reporting.
 - Ensure every module consumes the shared structs from `types.rs` (no duplication).
 
+## Detection Enhancements
+- Add AST-based JavaScript analysis (via swc or similar) to find deeply embedded secrets/endpoints beyond regex patterns.
+- Beef up detection logic: expand secret patterns, storage/DOM heuristics, and wire in remaining API tests (`test_auth_differences`, `test_mass_assignment`).
+- Fix network header capture in `network::monitor` so reports include request/response metadata.
+
+## Reporting Makeover
+- Redesign `reporting/markdown.rs` to produce a professional ASCII layout with distinct sections, summaries, and callouts.
+- Ensure JSON mirrors all new fields (headers, AST findings) and document the schema.
+- Add a `--format`/`--json-only` knob so users can tailor output.
+
+## CLI & UX
+- After detectors/reporting feel solid, switch to the planned `corrode --url https://target` interface and remove the implicit `targets.txt` workflow.
+- Document the new CLI in README, drop `install.sh` instructions, and focus installation guidance on `cargo install`.
+
+## Tooling & QA
+- ✅ `cargo clippy -- -D warnings` now passes clean; keep it in CI to catch regressions.
+- Add unit/integration tests for detectors and API testers; wire into CI before crates.io publish.
+
 ## Reporting Improvements
 - Output JSON and Markdown reports into the current working directory unless `--output-dir` overrides it.
 - JSON should include structured sections: secrets, network (full request/response metadata), API tests, DOM findings, recommendations.

@@ -108,28 +108,3 @@ pub fn extract_api_endpoints(code: &str, source: &str) -> Vec<DiscoveredEndpoint
 
     results
 }
-
-pub fn normalize_endpoint(url: &str, base_url: &str) -> String {
-    if url.starts_with("http://") || url.starts_with("https://") {
-        url.to_string()
-    } else if url.starts_with('/') {
-        // Extract base from base_url
-        if let Ok(parsed) = reqwest::Url::parse(base_url) {
-            format!(
-                "{}://{}{}",
-                parsed.scheme(),
-                parsed.host_str().unwrap_or(""),
-                url
-            )
-        } else {
-            url.to_string()
-        }
-    } else {
-        url.to_string()
-    }
-}
-
-pub fn find_graphql_schema(code: &str) -> Option<String> {
-    let schema_pattern = Regex::new(r#"(?s)type\s+Query\s*\{[^\}]+\}"#).unwrap();
-    schema_pattern.find(code).map(|m| m.as_str().to_string())
-}

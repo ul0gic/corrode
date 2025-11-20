@@ -48,18 +48,18 @@ pub async fn collect(page: &Page, scanner: &SecretScanner) -> Result<ScriptArtif
                     source_maps.push(src.to_string());
                 }
 
-                if let Ok(resp) = time::timeout(Duration::from_secs(10), reqwest::get(src)).await {
-                    if let Ok(resp) = resp {
-                        if let Ok(text) = resp.text().await {
-                            scanner.scan_text(&text, &format!("Script: {}", src)).await;
-                            scanner
-                                .extract_comments(&text, &format!("Script: {}", src))
-                                .await;
-                            api_endpoints.extend(extract_api_endpoints(
-                                &text,
-                                &format!("external-script-{}", idx),
-                            ));
-                        }
+                if let Ok(Ok(resp)) =
+                    time::timeout(Duration::from_secs(10), reqwest::get(src)).await
+                {
+                    if let Ok(text) = resp.text().await {
+                        scanner.scan_text(&text, &format!("Script: {}", src)).await;
+                        scanner
+                            .extract_comments(&text, &format!("Script: {}", src))
+                            .await;
+                        api_endpoints.extend(extract_api_endpoints(
+                            &text,
+                            &format!("external-script-{}", idx),
+                        ));
                     }
                 }
             }

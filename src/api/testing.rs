@@ -100,7 +100,7 @@ impl ApiTester {
                                 severity: "HIGH".to_string(),
                                 vulnerable: true,
                                 evidence: format!("HTTP {} - Accessible with ID: {}", status, test_id),
-                                details: format!("Endpoint allows access to different object IDs without authorization."),
+                                details: "Endpoint allows access to different object IDs without authorization.".to_string(),
                             });
                             break; // Found one, don't spam
                         }
@@ -142,8 +142,8 @@ impl ApiTester {
                 test_type: "Missing Authentication Check".to_string(),
                 severity: "HIGH".to_string(),
                 vulnerable: true,
-                evidence: format!("Returns HTTP 200 both with and without auth token"),
-                details: format!("Endpoint does not properly validate authentication tokens."),
+                evidence: "Returns HTTP 200 both with and without auth token".to_string(),
+                details: "Endpoint does not properly validate authentication tokens.".to_string(),
             });
         }
 
@@ -159,7 +159,7 @@ impl ApiTester {
                     status_no_auth,
                     body_no_auth.len()
                 ),
-                details: format!("Endpoint is publicly accessible and returns data."),
+                details: "Endpoint is publicly accessible and returns data.".to_string(),
             });
         }
 
@@ -205,7 +205,7 @@ impl ApiTester {
                 severity: "MEDIUM".to_string(),
                 vulnerable: true,
                 evidence: format!("HTTP {} - Server accepted admin-related fields", status),
-                details: format!("Endpoint may be vulnerable to mass assignment attacks."),
+                details: "Endpoint may be vulnerable to mass assignment attacks.".to_string(),
             });
         }
 

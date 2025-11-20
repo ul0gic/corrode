@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
+#[derive(Debug, Serialize, Deserialize, Clone, Default)]
 pub struct ScanResult {
     pub url: String,
     pub timestamp: String,
@@ -31,7 +31,7 @@ pub struct Comment {
     pub content: String,
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
+#[derive(Debug, Serialize, Deserialize, Clone, Default)]
 pub struct NetworkAnalysis {
     pub total_requests: usize,
     pub api_calls: Vec<String>,
@@ -53,7 +53,7 @@ pub struct ApiCall {
     pub response_size: usize,
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
+#[derive(Debug, Serialize, Deserialize, Clone, Default)]
 pub struct DomAnalysis {
     pub scripts: usize,
     pub forms: Vec<FormInfo>,
@@ -101,7 +101,7 @@ pub struct CookieInfo {
     pub same_site: String,
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
+#[derive(Debug, Serialize, Deserialize, Clone, Default)]
 pub struct JavaScriptAnalysis {
     pub window_objects: HashMap<String, String>,
     pub source_maps: Vec<String>,
@@ -118,7 +118,7 @@ pub struct DiscoveredEndpoint {
     pub parameters: Vec<String>,
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
+#[derive(Debug, Serialize, Deserialize, Clone, Default)]
 pub struct SecurityAnalysis {
     pub missing_headers: Vec<String>,
     pub cors_issues: Vec<String>,
@@ -143,76 +143,4 @@ pub struct ApiTestResult {
     pub vulnerable: bool,
     pub evidence: String,
     pub details: String,
-}
-
-impl Default for ScanResult {
-    fn default() -> Self {
-        Self {
-            url: String::new(),
-            timestamp: String::new(),
-            secrets: HashMap::new(),
-            network: NetworkAnalysis::default(),
-            dom: DomAnalysis::default(),
-            javascript: JavaScriptAnalysis::default(),
-            security: SecurityAnalysis::default(),
-            technologies: Vec::new(),
-            vulnerabilities: Vec::new(),
-            comments: Vec::new(),
-            api_tests: Vec::new(),
-            success: false,
-            error: None,
-        }
-    }
-}
-
-impl Default for NetworkAnalysis {
-    fn default() -> Self {
-        Self {
-            total_requests: 0,
-            api_calls: Vec::new(),
-            third_party: Vec::new(),
-            websockets: Vec::new(),
-            redirects: Vec::new(),
-            auth_schemes: Vec::new(),
-        }
-    }
-}
-
-impl Default for DomAnalysis {
-    fn default() -> Self {
-        Self {
-            scripts: 0,
-            forms: Vec::new(),
-            hidden_inputs: Vec::new(),
-            iframes: Vec::new(),
-            meta_tags: Vec::new(),
-            data_attributes: Vec::new(),
-            local_storage: HashMap::new(),
-            session_storage: HashMap::new(),
-            cookies: Vec::new(),
-            all_links: 0,
-        }
-    }
-}
-
-impl Default for JavaScriptAnalysis {
-    fn default() -> Self {
-        Self {
-            window_objects: HashMap::new(),
-            source_maps: Vec::new(),
-            debug_mode: Vec::new(),
-            api_endpoints: Vec::new(),
-        }
-    }
-}
-
-impl Default for SecurityAnalysis {
-    fn default() -> Self {
-        Self {
-            missing_headers: Vec::new(),
-            cors_issues: Vec::new(),
-            insecure_cookies: Vec::new(),
-            mixed_content: Vec::new(),
-        }
-    }
 }

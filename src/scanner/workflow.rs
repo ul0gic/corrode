@@ -1,9 +1,9 @@
 use anyhow::{Context, Result};
 use chrono::Utc;
 use colored::Colorize;
-use futures::StreamExt;
+use futures::{stream, StreamExt};
 use std::fs;
-use std::path::PathBuf;
+use std::path::Path;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio::time;
@@ -45,6 +45,14 @@ async fn scan_urls(urls: Vec<String>, config: Config) -> Result<()> {
         urls.len()
     );
 
+    let Config {
+        target: _,
+        concurrency,
+        output,
+        timeout,
+        verbose,
+    } = config;
+
     let (browser, mut handler) = Browser::launch(
         BrowserConfig::builder()
             .disable_cache()
@@ -80,16 +88,36 @@ async fn scan_urls(urls: Vec<String>, config: Config) -> Result<()> {
 
     time::sleep(Duration::from_millis(500)).await;
 
-    fs::create_dir_all(&config.output)?;
+    let concurrency = concurrency.max(1);
+    let timeout = timeout.max(1);
 
-    let output_dir = config.output.clone();
+    let output_root = Arc::new(output);
+    fs::create_dir_all(output_root.as_ref())?;
+
     let mut results = Vec::new();
     let mut total_secrets = 0;
     let mut total_vulns = 0;
     let mut total_comments = 0;
 
-    for url in urls {
-        match scan_url(url, browser.clone(), config.verbose, &output_dir).await {
+    let mut tasks = stream::iter(urls.into_iter().map(|url| {
+        let browser = Arc::clone(&browser);
+        let output_dir = Arc::clone(&output_root);
+        async move {
+            let res = scan_url(
+                url.clone(),
+                browser,
+                verbose,
+                output_dir.as_ref().as_path(),
+                timeout,
+            )
+            .await;
+            (url, res)
+        }
+    }))
+    .buffer_unordered(concurrency);
+
+    while let Some((url, result)) = tasks.next().await {
+        match result {
             Ok(result) => {
                 let secrets_count: usize = result.secrets.values().map(|v| v.len()).sum();
                 let vulns_count = result.vulnerabilities.len();
@@ -104,7 +132,7 @@ async fn scan_urls(urls: Vec<String>, config: Config) -> Result<()> {
                     .unwrap_or_else(|| "unknown".to_string())
                     .replace('.', "-");
 
-                let site_dir = config.output.join(&domain);
+                let site_dir = output_root.as_ref().join(&domain);
                 fs::create_dir_all(&site_dir)?;
 
                 let output_file = site_dir.join("scan_result.json");
@@ -142,7 +170,7 @@ async fn scan_urls(urls: Vec<String>, config: Config) -> Result<()> {
                 results.push(result);
             }
             Err(e) => {
-                eprintln!("{} Scan failed: {}", "[!]".red(), e);
+                eprintln!("{} Scan failed ({}): {}", "[!]".red(), url, e);
             }
         }
     }
@@ -172,7 +200,7 @@ async fn scan_urls(urls: Vec<String>, config: Config) -> Result<()> {
     println!(
         "{} Results saved to: {}",
         "[*]".cyan(),
-        config.output.display()
+        output_root.as_ref().display()
     );
     println!("{}", "=".repeat(60).dimmed());
 
@@ -183,7 +211,8 @@ async fn scan_url(
     url: String,
     browser: Arc<Browser>,
     verbose: bool,
-    output_dir: &PathBuf,
+    output_dir: &Path,
+    timeout_secs: u64,
 ) -> Result<ScanResult> {
     let start = Instant::now();
 
@@ -194,7 +223,8 @@ async fn scan_url(
     let scanner = SecretScanner::new();
     let network_monitor = NetworkMonitor::new();
 
-    let page_result = time::timeout(Duration::from_secs(60), browser.new_page(&url)).await;
+    let page_result =
+        time::timeout(Duration::from_secs(timeout_secs), browser.new_page(&url)).await;
 
     let page = match page_result {
         Err(_) => {
@@ -268,6 +298,30 @@ async fn scan_url(
 
         let idor_results = tester.test_idor(endpoint, &url).await;
         for result in idor_results {
+            if verbose {
+                println!(
+                    "{} {} - {}",
+                    "[!]".red().bold(),
+                    result.test_type,
+                    result.endpoint
+                );
+            }
+            api_tests.push(result);
+        }
+
+        if let Some(result) = tester.test_auth_differences(endpoint, &url).await {
+            if verbose {
+                println!(
+                    "{} {} - {}",
+                    "[!]".red().bold(),
+                    result.test_type,
+                    result.endpoint
+                );
+            }
+            api_tests.push(result);
+        }
+
+        if let Some(result) = tester.test_mass_assignment(endpoint, &url).await {
             if verbose {
                 println!(
                     "{} {} - {}",
