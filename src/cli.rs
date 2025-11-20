@@ -28,21 +28,14 @@ For more information: https://github.com/ul0gic/corrode
 "#
 )]
 pub struct Args {
-    /// Target URL or file path
-    ///
-    /// Can be:
-    ///   - Single URL: https://example.com
-    ///   - File with URLs: targets.txt (one URL per line, # for comments)
-    ///   - Any .txt file or path that exists will be treated as a URL list
-    #[arg(value_name = "TARGET", default_value = "targets.txt")]
-    pub target: String,
-
-    /// Number of concurrent browser instances
-    ///
-    /// Higher values = faster scans but more resource usage.
-    /// Recommended: 10-20 for most systems, 50+ for powerful machines.
-    #[arg(short, long, default_value = "10", value_name = "NUM")]
-    pub concurrency: usize,
+    /// Target URL to scan (must include protocol)
+    #[arg(
+        long = "url",
+        value_name = "https://target",
+        help = "Target URL to scan",
+        required = true
+    )]
+    pub url: String,
 
     /// Output directory for scan results
     ///
@@ -66,8 +59,7 @@ pub struct Args {
 impl Args {
     pub fn into_config(self) -> Config {
         Config {
-            target: self.target,
-            concurrency: self.concurrency,
+            url: self.url,
             output: self.output,
             timeout: self.timeout,
             verbose: self.verbose,

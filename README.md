@@ -2,7 +2,7 @@
 
 **High-performance security scanner for finding exposed credentials, secrets, and vulnerabilities in web applications**
 
-Built with Rust and chromiumoxide for blazing-fast concurrent scanning with comprehensive security analysis.
+Built with Rust and chromiumoxide for blazing-fast scanning with comprehensive security analysis.
 
 ## Architecture
 
@@ -11,8 +11,7 @@ Built with Rust and chromiumoxide for blazing-fast concurrent scanning with comp
 ```mermaid
 graph LR
     subgraph Input["📥 Input Layer"]
-        A[Single URL]
-        B[targets.txt File]
+        A[Single URL (--url flag)]
     end
 
     subgraph Browser["🌐 Browser Layer"]
@@ -46,7 +45,6 @@ graph LR
     end
 
     A --> C
-    B --> C
     C --> D
     C --> E
     C --> F
@@ -83,49 +81,45 @@ sequenceDiagram
     participant APITest as API Tester
     participant Reporter
 
-    User->>CLI: corrode targets.txt -v
+    User->>CLI: corrode --url https://example.com -v
     CLI->>CLI: Parse arguments
-    CLI->>CLI: Load URLs from file
+    CLI->>Browser: Create new page
+    Browser->>Page: Navigate to URL
 
-    loop For each URL
-        CLI->>Browser: Create new page
-        Browser->>Page: Navigate to URL
+    par Parallel Analysis
+        Page->>NetMon: Enable network tracking
+        NetMon->>NetMon: Monitor all HTTP requests
+        NetMon-->>Page: Track API calls
 
-        par Parallel Analysis
-            Page->>NetMon: Enable network tracking
-            NetMon->>NetMon: Monitor all HTTP requests
-            NetMon-->>Page: Track API calls
+        Page->>Page: Wait for page load
+        Page->>Scanner: Extract HTML content
+        Page->>Scanner: Extract inline scripts
+        Page->>Scanner: Fetch external scripts
+        Scanner->>Scanner: Scan for 30+ secret patterns
+        Scanner->>Scanner: Extract JS comments
 
-            Page->>Page: Wait for page load
-            Page->>Scanner: Extract HTML content
-            Page->>Scanner: Extract inline scripts
-            Page->>Scanner: Fetch external scripts
-            Scanner->>Scanner: Scan for 30+ secret patterns
-            Scanner->>Scanner: Extract JS comments
-
-            Page->>Page: Extract DOM elements
-            Page->>Page: Detect technologies
-            Page->>Page: Analyze cookies
-            Page->>Page: Check localStorage/sessionStorage
-        end
-
-        Scanner->>APITest: Discovered API endpoints
-
-        par API Vulnerability Tests
-            APITest->>APITest: Test auth bypass
-            APITest->>APITest: Test IDOR
-            APITest->>APITest: Test mass assignment
-        end
-
-        Scanner-->>Reporter: Secrets found
-        APITest-->>Reporter: Vulnerabilities found
-        NetMon-->>Reporter: Network analysis
-        Page-->>Reporter: DOM & tech data
-
-        Reporter->>Reporter: Generate JSON report
-        Reporter->>Reporter: Generate Markdown report
-        Reporter-->>User: Save to corrode-output/[domain]/
+        Page->>Page: Extract DOM elements
+        Page->>Page: Detect technologies
+        Page->>Page: Analyze cookies
+        Page->>Page: Check localStorage/sessionStorage
     end
+
+    Scanner->>APITest: Discovered API endpoints
+
+    par API Vulnerability Tests
+        APITest->>APITest: Test auth bypass
+        APITest->>APITest: Test IDOR
+        APITest->>APITest: Test mass assignment
+    end
+
+    Scanner-->>Reporter: Secrets found
+    APITest-->>Reporter: Vulnerabilities found
+    NetMon-->>Reporter: Network analysis
+    Page-->>Reporter: DOM & tech data
+
+    Reporter->>Reporter: Generate JSON report
+    Reporter->>Reporter: Generate Markdown report
+    Reporter-->>User: Save to corrode-output/[domain]/
 
     Reporter-->>User: Display summary
 ```
@@ -189,12 +183,12 @@ flowchart LR
 ## Features
 
 ### Core Scanning Capabilities
-- ⚡ **Concurrent Scanning** - Scan multiple sites simultaneously with configurable concurrency
+- ⚡ **Fast Headless Scanning** - Optimized Chromium workflow for low-latency scans
 - 🔍 **Deep Analysis** - Extracts and scans HTML, JavaScript bundles, inline scripts, and external resources
 - 🌐 **Network Monitoring** - Tracks all HTTP requests, API calls, and third-party domains
 - 🎯 **Pattern Matching** - Detects 30+ types of secrets and credentials
 - 📊 **Comprehensive Reporting** - JSON results and detailed Markdown reports per site
-- 🚀 **Bulk Scanning** - Point to a text file with URLs and scan them all
+- 🚀 **High-Concurrency Scanning** - Tune the number of headless Chromium instances per URL for faster analysis
 
 ### Advanced Analysis
 - 🔐 **API Discovery** - Automatically discovers API endpoints from JavaScript code
@@ -210,7 +204,7 @@ flowchart LR
 
 ### Method 1: Quick Install (Recommended)
 
-Install Corrode globally so you can run it from anywhere with just `corrode`:
+Install Corrode globally so you can run it from anywhere with just `corrode --url https://example.com`:
 
 ```bash
 # Clone the repository
@@ -226,10 +220,10 @@ Or using Make:
 make install
 ```
 
-After installation, you can run Corrode from anywhere:
+After installation, you can run Corrode with an explicit URL:
 ```bash
-corrode --help
-corrode targets.txt
+corrode --url https://example.com
+corrode --url https://example.com --verbose
 ```
 
 ### Method 2: Manual Installation
@@ -299,14 +293,10 @@ make test       # Run tests
 
 ### Quick Start
 
-By default, Corrode looks for a `targets.txt` file in the current directory:
+Run Corrode against an explicit target URL:
 
 ```bash
-# Create your targets file
-echo "https://example.com" > targets.txt
-
-# Run the scanner
-./target/release/corrode
+./target/release/corrode --url https://example.com
 ```
 
 ### Command Line Options
@@ -314,28 +304,11 @@ echo "https://example.com" > targets.txt
 ```
 High-performance security scanner for exposed credentials and vulnerabilities
 
-Usage: corrode [OPTIONS] <TARGET>
-
-Arguments:
-  <TARGET>
-          Target URL or file path
-
-          Can be:
-            - Single URL: https://example.com
-            - File with URLs: targets.txt (one URL per line, # for comments)
-            - Any .txt file or path that exists will be treated as a URL list
-
-          [default: targets.txt]
+Usage: corrode [OPTIONS] --url <URL>
 
 Options:
-  -c, --concurrency <NUM>
-          Number of concurrent browser instances
-
-          Higher values = faster scans but more resource usage.
-          Recommended: 10-20 for most systems, 50+ for powerful machines.
-
-          [default: 10]
-
+      --url <URL>
+          Target URL to scan (https://example.com)
   -o, --output <DIR>
           Output directory for scan results
 
@@ -364,51 +337,20 @@ Options:
 
 ### Usage Examples
 
-**Scan with default targets.txt:**
+**Standard scan:**
 ```bash
-./target/release/corrode
-```
-
-**Scan a single URL:**
-```bash
-./target/release/corrode https://example.com
-```
-
-**Scan multiple URLs from a custom file:**
-```bash
-./target/release/corrode my-targets.txt
-```
-
-**High-speed bulk scanning:**
-```bash
-# 50 concurrent scans with verbose output
-./target/release/corrode targets.txt -c 50 -v
+./target/release/corrode --url https://example.com
 ```
 
 **Custom output directory:**
 ```bash
-# Save results to dated directory
-./target/release/corrode targets.txt -o recon-$(date +%Y%m%d)
+./target/release/corrode --url https://example.com -o recon-$(date +%Y%m%d)
 ```
 
 **Extended timeout for slow sites:**
 ```bash
-# 60 second timeout instead of default 30
-./target/release/corrode targets.txt -t 60 -v
+./target/release/corrode --url https://example.com -t 60 -v
 ```
-
-## Example URLs File
-
-Create a `targets.txt` (any .txt file works):
-```
-https://example.com
-https://another-site.com
-https://app.startup.io
-# Comments are ignored
-https://api.service.com
-```
-
-**Note**: The scanner accepts any .txt file or checks if the provided path exists as a file. If it's a file, it reads URLs line by line; otherwise, it treats the argument as a single URL.
 
 ## Detected Secrets & Credentials
 
@@ -525,8 +467,8 @@ Results are saved in `corrode-output/[domain]/`:
 
 ## Performance
 
-- **Node.js (Puppeteer)**: ~5-10s per site, 1-3 concurrent
-- **Rust (corrode)**: ~3-5s per site, 50+ concurrent
+- **Node.js (Puppeteer)**: ~5-10s per site
+- **Rust (corrode)**: ~3-5s per site
 
 Scan 100 sites:
 - Node: ~15 minutes
@@ -593,14 +535,11 @@ Questions about contributions? Open an issue or ping @ul0gic on GitHub.
 # or
 make install
 
-# Scan with default targets.txt
-corrode
-
 # Scan a specific URL
-corrode https://example.com
+corrode --url https://example.com
 
-# Bulk scan with high concurrency
-corrode targets.txt -c 50 -v
+# Verbose scan
+corrode --url https://example.com -v
 
 # View help
 corrode --help
@@ -616,7 +555,6 @@ make uninstall
 corrode/
 ├── install.sh              # Installation script
 ├── Makefile                # Build automation
-├── targets.txt             # Your target URLs (create this)
 ├── corrode-output/         # Scan results (auto-created)
 │   └── example-com/
 │       ├── scan_result.json

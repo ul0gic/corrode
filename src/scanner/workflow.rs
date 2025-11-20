@@ -1,7 +1,7 @@
 use anyhow::{Context, Result};
 use chrono::Utc;
 use colored::Colorize;
-use futures::{stream, StreamExt};
+use futures::StreamExt;
 use std::fs;
 use std::path::Path;
 use std::sync::Arc;
@@ -24,30 +24,14 @@ use crate::types::{
 use chromiumoxide::browser::{Browser, BrowserConfig};
 
 pub async fn run(config: Config) -> Result<()> {
-    let urls = if config.target.ends_with(".txt") || std::path::Path::new(&config.target).exists() {
-        let content = fs::read_to_string(&config.target)?;
-        content
-            .lines()
-            .filter(|line| !line.trim().is_empty() && !line.starts_with('#'))
-            .map(|line| line.trim().to_string())
-            .collect()
-    } else {
-        vec![config.target.clone()]
-    };
-
-    scan_urls(urls, config).await
-}
-
-async fn scan_urls(urls: Vec<String>, config: Config) -> Result<()> {
     println!(
         "{} Corroding through {} targets...\n",
         "[*]".cyan().bold(),
-        urls.len()
+        1
     );
 
     let Config {
-        target: _,
-        concurrency,
+        url,
         output,
         timeout,
         verbose,
@@ -88,7 +72,6 @@ async fn scan_urls(urls: Vec<String>, config: Config) -> Result<()> {
 
     time::sleep(Duration::from_millis(500)).await;
 
-    let concurrency = concurrency.max(1);
     let timeout = timeout.max(1);
 
     let output_root = Arc::new(output);
@@ -99,79 +82,68 @@ async fn scan_urls(urls: Vec<String>, config: Config) -> Result<()> {
     let mut total_vulns = 0;
     let mut total_comments = 0;
 
-    let mut tasks = stream::iter(urls.into_iter().map(|url| {
-        let browser = Arc::clone(&browser);
-        let output_dir = Arc::clone(&output_root);
-        async move {
-            let res = scan_url(
-                url.clone(),
-                browser,
-                verbose,
-                output_dir.as_ref().as_path(),
-                timeout,
-            )
-            .await;
-            (url, res)
-        }
-    }))
-    .buffer_unordered(concurrency);
+    match scan_url(
+        url.clone(),
+        browser,
+        verbose,
+        output_root.as_ref().as_path(),
+        timeout,
+    )
+    .await
+    {
+        Ok(result) => {
+            let secrets_count: usize = result.secrets.values().map(|v| v.len()).sum();
+            let vulns_count = result.vulnerabilities.len();
+            let comments_count = result.comments.len();
+            total_secrets += secrets_count;
+            total_vulns += vulns_count;
+            total_comments += comments_count;
 
-    while let Some((url, result)) = tasks.next().await {
-        match result {
-            Ok(result) => {
-                let secrets_count: usize = result.secrets.values().map(|v| v.len()).sum();
-                let vulns_count = result.vulnerabilities.len();
-                let comments_count = result.comments.len();
-                total_secrets += secrets_count;
-                total_vulns += vulns_count;
-                total_comments += comments_count;
+            let domain = url::Url::parse(&result.url)
+                .ok()
+                .and_then(|u| u.host_str().map(|s| s.to_string()))
+                .unwrap_or_else(|| "unknown".to_string())
+                .replace('.', "-");
 
-                let domain = url::Url::parse(&result.url)
-                    .ok()
-                    .and_then(|u| u.host_str().map(|s| s.to_string()))
-                    .unwrap_or_else(|| "unknown".to_string())
-                    .replace('.', "-");
+            let site_dir = output_root.as_ref().join(&domain);
+            fs::create_dir_all(&site_dir)?;
 
-                let site_dir = output_root.as_ref().join(&domain);
-                fs::create_dir_all(&site_dir)?;
+            let output_file = site_dir.join("scan_result.json");
+            json_report::write(&output_file, &result)?;
 
-                let output_file = site_dir.join("scan_result.json");
-                json_report::write(&output_file, &result)?;
+            if secrets_count > 0 || vulns_count > 0 {
+                println!(
+                    "{} {} - {} secrets, {} vulns, {} comments",
+                    "[!]".red().bold(),
+                    result.url.yellow(),
+                    secrets_count.to_string().red().bold(),
+                    vulns_count.to_string().yellow().bold(),
+                    comments_count
+                );
 
-                if secrets_count > 0 || vulns_count > 0 {
+                for (pattern_type, findings) in &result.secrets {
+                    let total_matches: usize = findings.iter().map(|f| f.matches.len()).sum();
                     println!(
-                        "{} {} - {} secrets, {} vulns, {} comments",
-                        "[!]".red().bold(),
-                        result.url.yellow(),
-                        secrets_count.to_string().red().bold(),
-                        vulns_count.to_string().yellow().bold(),
-                        comments_count
+                        "    {} {}: {} matches",
+                        "→".dimmed(),
+                        pattern_type.cyan(),
+                        total_matches
                     );
-
-                    for (pattern_type, findings) in &result.secrets {
-                        let total_matches: usize = findings.iter().map(|f| f.matches.len()).sum();
-                        println!(
-                            "    {} {}: {} matches",
-                            "→".dimmed(),
-                            pattern_type.cyan(),
-                            total_matches
-                        );
-                    }
-
-                    if !result.technologies.is_empty() {
-                        println!(
-                            "    {} Technologies: {}",
-                            "🛠".dimmed(),
-                            result.technologies.join(", ").dimmed()
-                        );
-                    }
                 }
 
-                results.push(result);
+                if !result.technologies.is_empty() {
+                    println!(
+                        "    {} Technologies: {}",
+                        "🛠".dimmed(),
+                        result.technologies.join(", ").dimmed()
+                    );
+                }
             }
-            Err(e) => {
-                eprintln!("{} Scan failed ({}): {}", "[!]".red(), url, e);
-            }
+
+            results.push(result);
+        }
+        Err(e) => {
+            eprintln!("{} Scan failed ({}): {}", "[!]".red(), url, e);
         }
     }
 

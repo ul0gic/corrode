@@ -6,8 +6,8 @@
 - Keep the codebase modular: each capability (secret detection, DOM analysis, network capture, reporting) belongs in its own module for easy growth
 
 ## Licensing
-- Decide on a license that enforces attribution and restricts commercial resale (AGPL? custom clause?). Research compatible SPDX licenses (likely AGPL-3.0-only with NOTICE requirements) and update `Cargo.toml`, README, LICENSE text.
-- Document contribution guidelines to ensure inbound code is compatible with chosen license.
+- ✅ Adopt AGPL-3.0-only with ul0gic attribution; `Cargo.toml`, README, LICENSE, and CONTRIBUTING all aligned.
+- Document contribution guidelines to ensure inbound code stays compatible (done in CONTRIBUTING).
 
 ## Crate Publishing Readiness
 - Keep `Cargo.toml` metadata (repository, homepage, documentation, readme, keywords, categories) accurate and in sync with README.
@@ -17,11 +17,12 @@
 - Create crates.io account + API token; configure `.cargo/credentials` locally for publish flow.
 
 ## CLI UX Changes
-- Replace positional `TARGET` file arg with explicit `--url <https://site>` flag (required) so the workflow is always single-target.
+- ✅ Replace positional `TARGET` file arg with explicit `--url <https://site>` flag (required) so the workflow is always single-target.
+- Drop the unused `--concurrency` flag (currently no effect) until multi-target scanning returns.
 - Optional secondary inputs:
   - `--input-file <path>` for bulk testing (low priority)
   - `--stdin` flag to read URLs from STDIN if we need later
-- Keep additional knobs minimal: `--timeout`, `--concurrency`, `--chrome-bin`, `--output-dir`, `--json-only`, `--markdown-only`, `--no-browser-cache`.
+- Keep additional knobs minimal: `--timeout`, `--chrome-bin`, `--output-dir`, `--json-only`, `--markdown-only`, `--no-browser-cache`.
 - Update Clap definitions so `corrode --help` mirrors the new interface with practical examples.
 - Remove references to `targets.txt` from README/install instructions once CLI changes land.
 

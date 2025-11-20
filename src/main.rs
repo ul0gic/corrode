@@ -6,7 +6,6 @@ mod network;
 mod reporting;
 mod scanner;
 mod types;
-mod vulnerability;
 
 use anyhow::Result;
 
