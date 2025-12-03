@@ -54,6 +54,7 @@ impl NetworkMonitor {
                     status: 0,
                     request_headers: HashMap::new(),
                     response_headers: HashMap::new(),
+                    response_content_type: None,
                     request_body: request.post_data.clone(),
                     response_body: None,
                     response_size: 0,
@@ -85,6 +86,7 @@ impl NetworkMonitor {
                     status: response.status as u16,
                     request_headers: HashMap::new(),
                     response_headers: HashMap::new(),
+                    response_content_type: None,
                     request_body: None,
                     response_body: None,
                     response_size: 0,
@@ -95,6 +97,8 @@ impl NetworkMonitor {
                     entry.url = response.url.clone();
                 }
                 entry.response_headers = headers_to_map(&response.headers);
+                entry.response_content_type =
+                    header_value(&entry.response_headers, "content-type").map(|s| s.to_string());
                 if entry.request_headers.is_empty() {
                     if let Some(req_headers) = &response.request_headers {
                         entry.request_headers = headers_to_map(req_headers);
@@ -179,4 +183,11 @@ fn value_to_string(v: Value) -> String {
             .join(", "),
         Value::Object(obj) => serde_json::to_string(&obj).unwrap_or_default(),
     }
+}
+
+fn header_value<'a>(headers: &'a HashMap<String, String>, key: &str) -> Option<&'a str> {
+    headers
+        .iter()
+        .find(|(k, _)| k.eq_ignore_ascii_case(key))
+        .map(|(_, v)| v.as_str())
 }

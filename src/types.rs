@@ -49,6 +49,7 @@ pub struct ApiCall {
     pub status: u16,
     pub request_headers: HashMap<String, String>,
     pub response_headers: HashMap<String, String>,
+    pub response_content_type: Option<String>,
     pub request_body: Option<String>,
     pub response_body: Option<String>,
     pub response_size: usize,

@@ -104,8 +104,8 @@ fn format_calls_table(calls: &[ApiCall]) -> Vec<String> {
     let mut lines = Vec::new();
     lines.push("```".to_string());
     lines.push(format!(
-        "{:<6} {:<6} {:<70} {}",
-        "METHOD", "CODE", "URL", "HEADERS"
+        "{:<6} {:<6} {:<18} {:<60} {}",
+        "METHOD", "CODE", "CT", "URL", "AUTH"
     ));
     for call in calls {
         let method = if call.method.is_empty() {
@@ -118,12 +118,39 @@ fn format_calls_table(calls: &[ApiCall]) -> Vec<String> {
         } else {
             call.status.to_string()
         };
-        let url = truncate_middle(&call.url, 70);
+        let url = truncate_middle(&call.url, 60);
         let hints = header_hints(&call.request_headers);
-        lines.push(format!("{:<6} {:<6} {:<70} {}", method, status, url, hints));
+        let ct = content_type_for_call(call).unwrap_or("-".to_string());
+        lines.push(format!(
+            "{:<6} {:<6} {:<18} {:<60} {}",
+            method,
+            status,
+            truncate_middle(&ct, 18),
+            url,
+            hints
+        ));
     }
     lines.push("```".to_string());
     lines
+}
+
+fn content_type_for_call(call: &ApiCall) -> Option<String> {
+    if let Some(ct) = &call.response_content_type {
+        return Some(ct.clone());
+    }
+    header_value(&call.response_headers, "content-type")
+        .or_else(|| header_value(&call.request_headers, "content-type"))
+        .map(|s| s.to_string())
+}
+
+fn header_value<'a>(
+    headers: &'a std::collections::HashMap<String, String>,
+    key: &str,
+) -> Option<&'a str> {
+    headers
+        .iter()
+        .find(|(k, _)| k.eq_ignore_ascii_case(key))
+        .map(|(_, v)| v.as_str())
 }
 
 pub fn write(result: &ScanResult, base_output_dir: &Path) -> Result<()> {

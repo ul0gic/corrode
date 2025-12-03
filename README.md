@@ -147,6 +147,7 @@ cargo build --release
 | `--chrome-bin <PATH>`| Path to Chrome/Chromium binary (overrides auto-detect)                  | auto-detect       |          |
 | `-t, --timeout <s>`  | Page-load timeout in seconds                                            | `30`              |          |
 | `-v, --verbose`      | Verbose progress + findings                                             | off               |          |
+| `--format <fmt>`     | Output format: `json`, `md`, or `both`                                  | `both`            |          |
 | `-h, --help`         | Show help                                                               | –                 |          |
 | `-V, --version`      | Show version                                                            | –                 |          |
 

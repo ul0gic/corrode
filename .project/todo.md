@@ -85,8 +85,8 @@ src/
 ## Reporting Makeover
 - Redesign `reporting/markdown.rs` to produce a professional ASCII layout with distinct sections, summaries, and callouts.
 - Ensure JSON mirrors all new fields (headers, AST findings) and document the schema.
-- Add a `--format`/`--json-only` knob so users can tailor output.
-- Filter AST findings to first-party sources / sensitive kinds to avoid noisy reports.
+- ✅ Add a `--format`/`--json-only` knob so users can tailor output.
+- ✅ Filter AST findings to first-party sources / sensitive kinds to avoid noisy reports.
 
 ## CLI & UX
 - Keep CLI help/examples polished for the single-target `--url` flow; avoid reintroducing multi-target inputs.
@@ -103,7 +103,7 @@ src/
 - Consider `--format json|md|both` for future flexibility.
 
 ## Network Monitoring Improvements
-- Finish header capture in `network_monitor.rs`; ensure request/response headers populate properly and API calls are persisted to the JSON/Markdown reports.
+- ✅ Finish header capture in `network_monitor.rs`; ensure request/response headers populate properly and API calls are persisted to the JSON/Markdown reports.
 - Detect and label API endpoints (method, status, auth hints) from captured traffic; surface key ones in the Markdown report.
 - Consider storing HAR-like output for deeper debugging.
 - Verify async tasks don't leak; add graceful shutdown.

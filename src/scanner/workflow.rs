@@ -10,7 +10,7 @@ use std::time::{Duration, Instant};
 use tokio::time;
 
 use crate::api::testing::ApiTester;
-use crate::config::Config;
+use crate::config::{Config, OutputFormat};
 use crate::detectors::{
     dom::{self, DomArtifacts},
     javascript::{self, ScriptArtifacts},
@@ -31,6 +31,7 @@ pub async fn run(config: Config) -> Result<()> {
         timeout,
         verbose,
         chrome_bin,
+        format: output_format,
     } = config;
 
     let chrome_binary = resolve_chrome_binary(chrome_bin)?;
@@ -94,6 +95,7 @@ pub async fn run(config: Config) -> Result<()> {
         verbose,
         output_root.as_ref().as_path(),
         timeout,
+        output_format,
     )
     .await
     {
@@ -114,8 +116,10 @@ pub async fn run(config: Config) -> Result<()> {
             let site_dir = output_root.as_ref().join(&domain);
             fs::create_dir_all(&site_dir)?;
 
-            let output_file = site_dir.join("scan_result.json");
-            json_report::write(&output_file, &result)?;
+            if matches!(output_format, OutputFormat::Json | OutputFormat::Both) {
+                let output_file = site_dir.join("scan_result.json");
+                json_report::write(&output_file, &result)?;
+            }
 
             if secrets_count > 0 || vulns_count > 0 {
                 println!(
@@ -276,6 +280,7 @@ async fn scan_url(
     verbose: bool,
     output_dir: &Path,
     timeout_secs: u64,
+    output_format: OutputFormat,
 ) -> Result<ScanResult> {
     let start = Instant::now();
 
@@ -311,7 +316,7 @@ async fn scan_url(
         network_monitor.start_monitoring(&page).await;
     }
 
-    time::sleep(Duration::from_secs(3)).await;
+    time::sleep(Duration::from_secs(6)).await;
 
     let html = page.content().await.context("Failed to get page content")?;
     scanner.scan_text(&html, "HTML").await;
@@ -473,7 +478,9 @@ async fn scan_url(
         error: None,
     };
 
-    markdown::write(&result, output_dir)?;
+    if matches!(output_format, OutputFormat::Md | OutputFormat::Both) {
+        markdown::write(&result, output_dir)?;
+    }
 
     Ok(result)
 }

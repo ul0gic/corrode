@@ -89,18 +89,21 @@ pub async fn collect(
                 }
 
                 if let Some(text) = fetched {
-                    scanner.scan_text(&text, &format!("Script: {}", src)).await;
-                    scanner
-                        .extract_comments(&text, &format!("Script: {}", src))
-                        .await;
-                    api_endpoints.extend(extract_api_endpoints(
-                        &text,
-                        &format!("external-script-{}", idx),
-                    ));
-                    if should_analyze_ast(Some(src), target_host) {
-                        ast_findings.extend(ast::analyze_script(&text, src));
+                    let first_party = is_first_party_url(src, target_host);
+                    if first_party {
+                        scanner.scan_text(&text, &format!("Script: {}", src)).await;
+                        scanner
+                            .extract_comments(&text, &format!("Script: {}", src))
+                            .await;
+                        api_endpoints.extend(extract_api_endpoints(
+                            &text,
+                            &format!("external-script-{}", idx),
+                        ));
+                        if should_analyze_ast(Some(src), target_host) {
+                            ast_findings.extend(ast::analyze_script(&text, src));
+                        }
+                        vulnerabilities.extend(detect_rsc_vuln(&text, src));
                     }
-                    vulnerabilities.extend(detect_rsc_vuln(&text, src));
                 }
             }
         }
@@ -192,6 +195,22 @@ fn should_analyze_ast(origin: Option<&str>, target_host: Option<&str>) -> bool {
             if let Some(host) = url.host_str() {
                 return host.eq_ignore_ascii_case(target);
             }
+        }
+    }
+
+    true
+}
+
+fn is_first_party_url(url: &str, target_host: Option<&str>) -> bool {
+    let Some(target) = target_host else {
+        return true;
+    };
+
+    if let Ok(parsed) = Url::parse(url) {
+        if let Some(host) = parsed.host_str() {
+            return host.eq_ignore_ascii_case(target)
+                || host.ends_with(&format!(".{}", target))
+                || target.ends_with(&format!(".{}", host));
         }
     }
 

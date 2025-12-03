@@ -1,7 +1,7 @@
 use clap::Parser;
 use std::path::PathBuf;
 
-use crate::config::Config;
+use crate::config::{Config, OutputFormat};
 
 #[derive(Parser, Debug)]
 #[command(name = "corrode")]
@@ -63,6 +63,16 @@ pub struct Args {
     /// Shows detailed progress, found secrets, and API test results in real-time.
     #[arg(short, long)]
     pub verbose: bool,
+
+    /// Output format: json, md, or both
+    #[arg(
+        long,
+        value_enum,
+        default_value = "both",
+        value_name = "FORMAT",
+        help = "Output format: json, md, or both"
+    )]
+    pub format: OutputFormat,
 }
 
 impl Args {
@@ -73,6 +83,7 @@ impl Args {
             timeout: self.timeout,
             verbose: self.verbose,
             chrome_bin: self.chrome_bin,
+            format: self.format,
         }
     }
 }
