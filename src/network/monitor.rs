@@ -5,6 +5,7 @@ use chromiumoxide::cdp::browser_protocol::network::{
 };
 use chromiumoxide::Page;
 use futures::StreamExt;
+use serde_json::Value;
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::Mutex;
@@ -46,24 +47,22 @@ impl NetworkMonitor {
                     continue;
                 }
 
-                // Headers is not Option anymore in newer chromiumoxide
-                let headers: HashMap<String, String> = HashMap::new();
-                // Note: request.headers doesn't have a public iterator in newer versions
-
                 let mut calls = api_calls_req.lock().await;
-                calls.insert(
-                    request_id.clone(),
-                    ApiCall {
-                        url: request.url.clone(),
-                        method: request.method.clone(),
-                        status: 0, // Will be updated on response
-                        request_headers: headers,
-                        response_headers: HashMap::new(),
-                        request_body: request.post_data.clone(),
-                        response_body: None,
-                        response_size: 0,
-                    },
-                );
+                let entry = calls.entry(request_id.clone()).or_insert(ApiCall {
+                    url: request.url.clone(),
+                    method: request.method.clone(),
+                    status: 0,
+                    request_headers: HashMap::new(),
+                    response_headers: HashMap::new(),
+                    request_body: request.post_data.clone(),
+                    response_body: None,
+                    response_size: 0,
+                });
+
+                entry.url = request.url.clone();
+                entry.method = request.method.clone();
+                entry.request_headers = headers_to_map(&request.headers);
+                entry.request_body = request.post_data.clone();
             }
         });
 
@@ -79,14 +78,27 @@ impl NetworkMonitor {
                 let request_id = event.request_id.inner().to_string();
                 let response = &event.response;
 
-                // Headers is a HashMap-like structure, convert to our format
-                let headers: HashMap<String, String> = HashMap::new();
-                // Note: response.headers doesn't have a public iterator in newer versions
-
                 let mut calls = api_calls_resp.lock().await;
-                if let Some(call) = calls.get_mut(&request_id) {
-                    call.status = response.status as u16;
-                    call.response_headers = headers;
+                let entry = calls.entry(request_id).or_insert(ApiCall {
+                    url: response.url.clone(),
+                    method: String::new(),
+                    status: response.status as u16,
+                    request_headers: HashMap::new(),
+                    response_headers: HashMap::new(),
+                    request_body: None,
+                    response_body: None,
+                    response_size: 0,
+                });
+
+                entry.status = response.status as u16;
+                if entry.url.is_empty() {
+                    entry.url = response.url.clone();
+                }
+                entry.response_headers = headers_to_map(&response.headers);
+                if entry.request_headers.is_empty() {
+                    if let Some(req_headers) = &response.request_headers {
+                        entry.request_headers = headers_to_map(req_headers);
+                    }
                 }
             }
         });
@@ -137,5 +149,34 @@ impl NetworkMonitor {
     pub async fn get_all_calls(&self) -> Vec<ApiCall> {
         let calls = self.api_calls.lock().await;
         calls.values().cloned().collect()
+    }
+}
+
+fn headers_to_map<T: serde::Serialize>(headers: &T) -> HashMap<String, String> {
+    serde_json::to_value(headers)
+        .ok()
+        .and_then(|val| match val {
+            Value::Object(map) => Some(
+                map.into_iter()
+                    .map(|(k, v)| (k, value_to_string(v)))
+                    .collect::<HashMap<_, _>>(),
+            ),
+            _ => None,
+        })
+        .unwrap_or_default()
+}
+
+fn value_to_string(v: Value) -> String {
+    match v {
+        Value::String(s) => s,
+        Value::Number(n) => n.to_string(),
+        Value::Bool(b) => b.to_string(),
+        Value::Null => "null".to_string(),
+        Value::Array(arr) => arr
+            .into_iter()
+            .map(value_to_string)
+            .collect::<Vec<_>>()
+            .join(", "),
+        Value::Object(obj) => serde_json::to_string(&obj).unwrap_or_default(),
     }
 }

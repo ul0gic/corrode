@@ -133,7 +133,7 @@ cargo build --release
 | Requirement          | Details                                    |
 | -------------------- | ------------------------------------------ |
 | Rust                 | 1.70+ (install from [rustup.rs](https://rustup.rs)) |
-| Chrome/Chromium      | Installed and discoverable (`/usr/bin/google-chrome` by default) |
+| Chrome/Chromium      | Installed and discoverable; auto-detected, or override with `--chrome-bin`/`CHROME_BIN` |
 | OS                   | Linux/macOS                                |
 
 ## Usage
@@ -144,10 +144,13 @@ cargo build --release
 | -------------------- | ----------------------------------------------------------------------- | ----------------- | -------- |
 | `--url <URL>`        | Target URL to scan                                                      | –                 | ✅       |
 | `-o, --output <DIR>` | Output directory (`<output>/<domain>/scan_result.json`, `REPORT.md`)    | `corrode-output`  |          |
+| `--chrome-bin <PATH>`| Path to Chrome/Chromium binary (overrides auto-detect)                  | auto-detect       |          |
 | `-t, --timeout <s>`  | Page-load timeout in seconds                                            | `30`              |          |
 | `-v, --verbose`      | Verbose progress + findings                                             | off               |          |
 | `-h, --help`         | Show help                                                               | –                 |          |
 | `-V, --version`      | Show version                                                            | –                 |          |
+
+Chrome/Chromium is auto-detected via PATH and common install locations. Override with `--chrome-bin <path>` or `CHROME_BIN`/`CHROMIUM_BIN` if you have a nonstandard install.
 
 ### Usage Examples
 
@@ -162,6 +165,10 @@ cargo build --release
 - Extended timeout for slow sites:
   ```bash
   ./target/release/corrode --url https://example.com -t 60 -v
+  ```
+- Explicit Chrome binary override:
+  ```bash
+  ./target/release/corrode --url https://example.com --chrome-bin "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
   ```
 
 ## Detected Secrets & Credentials

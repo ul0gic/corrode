@@ -43,6 +43,15 @@ pub struct Args {
     #[arg(short, long, default_value = "corrode-output", value_name = "DIR")]
     pub output: PathBuf,
 
+    /// Path to Chrome/Chromium binary (overrides auto-detect)
+    #[arg(
+        long,
+        env = "CHROME_BIN",
+        value_name = "PATH",
+        help = "Path to Chrome/Chromium binary (overrides auto-detect)"
+    )]
+    pub chrome_bin: Option<PathBuf>,
+
     /// Timeout for page load in seconds
     ///
     /// Maximum time to wait for a page to load before moving on.
@@ -63,6 +72,7 @@ impl Args {
             output: self.output,
             timeout: self.timeout,
             verbose: self.verbose,
+            chrome_bin: self.chrome_bin,
         }
     }
 }

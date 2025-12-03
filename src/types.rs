@@ -39,6 +39,7 @@ pub struct NetworkAnalysis {
     pub websockets: Vec<String>,
     pub redirects: Vec<String>,
     pub auth_schemes: Vec<String>,
+    pub calls: Vec<ApiCall>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]

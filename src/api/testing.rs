@@ -1,4 +1,5 @@
 use crate::types::{ApiTestResult, DiscoveredEndpoint};
+use reqwest::Url;
 use reqwest::{header, Client};
 use std::time::Duration;
 
@@ -24,19 +25,20 @@ impl ApiTester {
         base_url: &str,
     ) -> Option<ApiTestResult> {
         let url = normalize_url(&endpoint.url, base_url);
+        if !is_first_party(&url, base_url) {
+            return None;
+        }
 
         // Test without any auth headers
-        let response = match self.client.get(&url).send().await {
-            Ok(r) => r,
-            Err(_) => return None,
-        };
+        let response = self.client.get(&url).send().await.ok()?;
+        let content_type = content_type_header(&response);
 
         let status = response.status().as_u16();
         let body = response.text().await.ok()?;
         let body_size = body.len();
 
         // Flag if we get 200 with substantial data
-        if status == 200 && body_size > 100 {
+        if status == 200 && body_size > 100 && content_type_is_jsonish(content_type.as_deref()) {
             // Check if response contains sensitive data indicators
             let has_sensitive_data = body.contains("email") 
                 || body.contains("password")
@@ -75,6 +77,9 @@ impl ApiTester {
         base_url: &str,
     ) -> Vec<ApiTestResult> {
         let mut results = Vec::new();
+        if !is_first_party(&endpoint.url, base_url) {
+            return results;
+        }
 
         // Only test endpoints with ID parameters
         if !endpoint.parameters.is_empty() {
@@ -119,9 +124,13 @@ impl ApiTester {
         base_url: &str,
     ) -> Option<ApiTestResult> {
         let url = normalize_url(&endpoint.url, base_url);
+        if !is_first_party(&url, base_url) {
+            return None;
+        }
 
         // Test without auth
         let response_no_auth = self.client.get(&url).send().await.ok()?;
+        let content_type = content_type_header(&response_no_auth);
         let status_no_auth = response_no_auth.status().as_u16();
         let body_no_auth = response_no_auth.text().await.ok()?;
 
@@ -136,7 +145,10 @@ impl ApiTester {
         let status_invalid = response_invalid.status().as_u16();
 
         // If both return 200, that's suspicious
-        if status_no_auth == 200 && status_invalid == 200 {
+        if status_no_auth == 200
+            && status_invalid == 200
+            && content_type_is_jsonish(content_type.as_deref())
+        {
             return Some(ApiTestResult {
                 endpoint: url.clone(),
                 test_type: "Missing Authentication Check".to_string(),
@@ -148,7 +160,10 @@ impl ApiTester {
         }
 
         // If no auth returns data but different status codes
-        if status_no_auth == 200 && body_no_auth.len() > 100 {
+        if status_no_auth == 200
+            && body_no_auth.len() > 200
+            && content_type_is_jsonish(content_type.as_deref())
+        {
             return Some(ApiTestResult {
                 endpoint: url.clone(),
                 test_type: "Publicly Accessible API".to_string(),
@@ -177,6 +192,9 @@ impl ApiTester {
         }
 
         let url = normalize_url(&endpoint.url, base_url);
+        if !is_first_party(&url, base_url) {
+            return None;
+        }
 
         // Try to POST/PUT with admin fields
         let dangerous_fields = serde_json::json!({
@@ -229,5 +247,33 @@ fn normalize_url(endpoint_url: &str, base_url: &str) -> String {
         }
     } else {
         endpoint_url.to_string()
+    }
+}
+
+fn is_first_party(endpoint_url: &str, base_url: &str) -> bool {
+    let endpoint_host = Url::parse(endpoint_url)
+        .ok()
+        .and_then(|u| u.host_str().map(|h| h.to_string()));
+    let base_host = Url::parse(base_url)
+        .ok()
+        .and_then(|u| u.host_str().map(|h| h.to_string()));
+
+    match (endpoint_host, base_host) {
+        (Some(eh), Some(bh)) => eh == bh,
+        _ => false,
+    }
+}
+
+fn content_type_header(resp: &reqwest::Response) -> Option<String> {
+    resp.headers()
+        .get(header::CONTENT_TYPE)
+        .and_then(|v| v.to_str().ok())
+        .map(|s| s.to_lowercase())
+}
+
+fn content_type_is_jsonish(ct: Option<&str>) -> bool {
+    match ct {
+        Some(ct) => ct.contains("json") || ct.contains("javascript") || ct.contains("text/plain"),
+        None => false,
     }
 }

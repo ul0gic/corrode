@@ -6,4 +6,5 @@ pub struct Config {
     pub output: PathBuf,
     pub timeout: u64,
     pub verbose: bool,
+    pub chrome_bin: Option<PathBuf>,
 }

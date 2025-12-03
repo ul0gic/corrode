@@ -215,6 +215,10 @@ impl AstAnalyzer {
 
     fn is_sensitive_literal(&self, key: &str, value: &str) -> bool {
         let key_l = key.to_lowercase();
+        let val_l = value.to_lowercase();
+        if val_l.contains("pixel code is not installed correctly") {
+            return false;
+        }
         let key_hint = self.credential_hint_regex.is_match(key)
             || key_l.contains("supabase")
             || key_l.contains("stripe")
@@ -227,9 +231,9 @@ impl AstAnalyzer {
         let looks_url = self.url_regex.is_match(value);
         let looks_keyish =
             value.starts_with("pk_") || value.starts_with("sk_") || value.starts_with("nfp_");
-        let long_secret = value.len() > 40;
+        let long_secret = value.len() > 80;
 
-        key_hint || looks_jwt || looks_url || looks_keyish || long_secret
+        key_hint || looks_jwt || looks_url || looks_keyish || (long_secret && key_hint)
     }
 }
 

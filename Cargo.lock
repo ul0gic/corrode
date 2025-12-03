@@ -449,14 +449,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "chromiumoxide_stealth"
-version = "0.1.1"
-source = "git+https://github.com/cloei/chromiumoxide_stealth#d55e4698c54b84faf18be7f01a6b7b48b5ce9673"
-dependencies = [
- "chromiumoxide",
-]
-
-[[package]]
 name = "chromiumoxide_types"
 version = "0.6.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -567,7 +559,6 @@ dependencies = [
  "anyhow",
  "base64",
  "chromiumoxide",
- "chromiumoxide_stealth",
  "chrono",
  "clap",
  "colored",

@@ -1,5 +1,6 @@
 use anyhow::Result;
 use chromiumoxide::Page;
+use regex::Regex;
 use reqwest;
 use serde_json::Value;
 use std::collections::HashMap;
@@ -10,7 +11,7 @@ use url::Url;
 use crate::api::discovery::extract_api_endpoints;
 use crate::detectors::{ast, secrets::SecretScanner};
 use crate::scanner::page_utils;
-use crate::types::{AstFinding, DiscoveredEndpoint};
+use crate::types::{AstFinding, DiscoveredEndpoint, Vulnerability};
 
 pub struct ScriptArtifacts {
     pub script_count: usize,
@@ -20,9 +21,14 @@ pub struct ScriptArtifacts {
     pub api_endpoints: Vec<DiscoveredEndpoint>,
     pub technologies: Vec<String>,
     pub ast_findings: Vec<AstFinding>,
+    pub vulnerabilities: Vec<Vulnerability>,
 }
 
-pub async fn collect(page: &Page, scanner: &SecretScanner) -> Result<ScriptArtifacts> {
+pub async fn collect(
+    page: &Page,
+    scanner: &SecretScanner,
+    target_host: Option<&str>,
+) -> Result<ScriptArtifacts> {
     let scripts = match page
         .evaluate("Array.from(document.scripts).map(s => ({ src: s.src, inline: !s.src, content: s.src ? null : s.textContent.substring(0, 5000) }))")
         .await
@@ -35,6 +41,7 @@ pub async fn collect(page: &Page, scanner: &SecretScanner) -> Result<ScriptArtif
     let mut source_maps = Vec::new();
     let mut api_endpoints = Vec::new();
     let mut ast_findings = Vec::new();
+    let mut vulnerabilities = Vec::new();
 
     for (idx, script) in scripts_array.iter().enumerate() {
         if let Some(content) = script.get("content").and_then(|v| v.as_str()) {
@@ -44,10 +51,13 @@ pub async fn collect(page: &Page, scanner: &SecretScanner) -> Result<ScriptArtif
                 content,
                 &format!("inline-script-{}", idx),
             ));
-            ast_findings.extend(ast::analyze_script(
-                content,
-                &format!("inline-script-{}", idx),
-            ));
+            if should_analyze_ast(None, target_host) {
+                ast_findings.extend(ast::analyze_script(
+                    content,
+                    &format!("inline-script-{}", idx),
+                ));
+            }
+            vulnerabilities.extend(detect_rsc_vuln(content, &format!("inline-script-{}", idx)));
         }
 
         if let Some(src) = script.get("src").and_then(|v| v.as_str()) {
@@ -87,7 +97,10 @@ pub async fn collect(page: &Page, scanner: &SecretScanner) -> Result<ScriptArtif
                         &text,
                         &format!("external-script-{}", idx),
                     ));
-                    ast_findings.extend(ast::analyze_script(&text, src));
+                    if should_analyze_ast(Some(src), target_host) {
+                        ast_findings.extend(ast::analyze_script(&text, src));
+                    }
+                    vulnerabilities.extend(detect_rsc_vuln(&text, src));
                 }
             }
         }
@@ -165,5 +178,51 @@ pub async fn collect(page: &Page, scanner: &SecretScanner) -> Result<ScriptArtif
         api_endpoints,
         technologies,
         ast_findings,
+        vulnerabilities,
     })
+}
+
+fn should_analyze_ast(origin: Option<&str>, target_host: Option<&str>) -> bool {
+    let Some(target) = target_host else {
+        return true;
+    };
+
+    if let Some(orig) = origin {
+        if let Ok(url) = Url::parse(orig) {
+            if let Some(host) = url.host_str() {
+                return host.eq_ignore_ascii_case(target);
+            }
+        }
+    }
+
+    true
+}
+
+fn detect_rsc_vuln(text: &str, source: &str) -> Vec<Vulnerability> {
+    // Detect vulnerable react-server-dom-* versions (CVE-2025-55182)
+    // Affected: 19.0, 19.1.0, 19.1.1, 19.2.0
+    let mut vulns = Vec::new();
+    let re = Regex::new(
+        r"(react-server-dom-(?:webpack|parcel|turbopack))[^0-9]{0,6}(19\.0(?:\.0)?|19\.1\.0|19\.1\.1|19\.2\.0)",
+    )
+    .unwrap();
+
+    for cap in re.captures_iter(text) {
+        let pkg = cap.get(1).map(|m| m.as_str()).unwrap_or("react-server-dom");
+        let ver = cap.get(2).map(|m| m.as_str()).unwrap_or("unknown");
+        let desc = format!(
+            "Vulnerable {} detected ({}). CVE-2025-55182 allows unauthenticated RCE in React Server Components/Functions.",
+            pkg, ver
+        );
+        vulns.push(Vulnerability {
+            vuln_type: "React RSC RCE (CVE-2025-55182)".to_string(),
+            severity: "critical".to_string(),
+            description: desc,
+            remediation: "Upgrade react-server-dom-* to 19.0.1/19.1.2/19.2.1 or framework patched versions (Next.js 15.x/16.x etc.)."
+                .to_string(),
+            url: Some(source.to_string()),
+        });
+    }
+
+    vulns
 }

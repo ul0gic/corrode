@@ -1,9 +1,10 @@
-use anyhow::{Context, Result};
+use anyhow::{bail, Context, Result};
 use chrono::Utc;
 use colored::Colorize;
 use futures::StreamExt;
+use std::env;
 use std::fs;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio::time;
@@ -24,23 +25,28 @@ use crate::types::{
 use chromiumoxide::browser::{Browser, BrowserConfig};
 
 pub async fn run(config: Config) -> Result<()> {
-    println!(
-        "{} Corroding through {} targets...\n",
-        "[*]".cyan().bold(),
-        1
-    );
-
     let Config {
         url,
         output,
         timeout,
         verbose,
+        chrome_bin,
     } = config;
+
+    let chrome_binary = resolve_chrome_binary(chrome_bin)?;
+
+    println!(
+        "{} Using Chrome binary: {}",
+        "[*]".cyan(),
+        chrome_binary.display()
+    );
+
+    println!("{} Corroding target {}...\n", "[*]".cyan().bold(), url);
 
     let (browser, mut handler) = Browser::launch(
         BrowserConfig::builder()
             .disable_cache()
-            .chrome_executable("/usr/bin/google-chrome")
+            .chrome_executable(chrome_binary)
             .args(vec![
                 "--no-sandbox",
                 "--disable-setuid-sandbox",
@@ -148,11 +154,12 @@ pub async fn run(config: Config) -> Result<()> {
     }
 
     println!("\n{}", "=".repeat(60).dimmed());
+    let success = results.iter().any(|r| r.success);
     println!(
-        "{} Scan complete: {}/{} targets successful",
+        "{} Scan complete for {} ({})",
         "[✓]".green().bold(),
-        results.iter().filter(|r| r.success).count(),
-        results.len()
+        url,
+        if success { "success" } else { "failed" }
     );
     println!(
         "{} Total secrets found: {}",
@@ -177,6 +184,90 @@ pub async fn run(config: Config) -> Result<()> {
     println!("{}", "=".repeat(60).dimmed());
 
     Ok(())
+}
+
+fn resolve_chrome_binary(override_path: Option<PathBuf>) -> Result<PathBuf> {
+    if let Some(path) = override_path {
+        if path.is_file() {
+            return Ok(path);
+        }
+        bail!(
+            "Chrome/Chromium binary not found at provided path: {}",
+            path.display()
+        );
+    }
+
+    for key in ["CHROME_BIN", "CHROMIUM_BIN"] {
+        if let Ok(val) = env::var(key) {
+            let candidate = PathBuf::from(val);
+            if candidate.is_file() {
+                return Ok(candidate);
+            }
+        }
+    }
+
+    let mut candidates: Vec<PathBuf> = Vec::new();
+
+    if let Some(path_var) = env::var_os("PATH") {
+        for dir in env::split_paths(&path_var) {
+            candidates.extend(candidate_names().map(|name| dir.join(name)));
+            if cfg!(windows) {
+                candidates.extend(candidate_names().map(|name| dir.join(format!("{name}.exe"))));
+            }
+        }
+    }
+
+    candidates.extend(known_locations());
+
+    if let Some(found) = candidates.into_iter().find(|p| p.is_file()) {
+        return Ok(found);
+    }
+
+    bail!(
+        "Could not locate Chrome/Chromium. Set --chrome-bin or CHROME_BIN. Checked common names (google-chrome, chromium, chrome) on PATH and standard install locations."
+    );
+}
+
+fn candidate_names() -> impl Iterator<Item = &'static str> {
+    [
+        "google-chrome",
+        "google-chrome-stable",
+        "chromium",
+        "chromium-browser",
+        "chrome",
+    ]
+    .into_iter()
+}
+
+fn known_locations() -> Vec<PathBuf> {
+    let mut paths: Vec<PathBuf> = Vec::new();
+
+    if cfg!(target_os = "macos") {
+        paths.push("/Applications/Google Chrome.app/Contents/MacOS/Google Chrome".into());
+        paths.push("/Applications/Chromium.app/Contents/MacOS/Chromium".into());
+    }
+
+    if cfg!(target_os = "windows") {
+        paths.push(r"C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe".into());
+        paths.push(r"C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe".into());
+        paths.push(r"C:\\Program Files\\Chromium\\Application\\chrome.exe".into());
+    }
+
+    if cfg!(target_os = "linux") {
+        paths.extend(
+            [
+                "/usr/bin/google-chrome",
+                "/usr/bin/google-chrome-stable",
+                "/usr/bin/chromium",
+                "/usr/bin/chromium-browser",
+                "/snap/bin/chromium",
+            ]
+            .into_iter()
+            .map(PathBuf::from),
+        );
+    }
+
+    paths
 }
 
 async fn scan_url(
@@ -228,7 +319,10 @@ async fn scan_url(
     page_utils::trigger_dynamic_content(&page).await;
 
     let dom_data = dom::collect(&page, &scanner).await?;
-    let script_data = javascript::collect(&page, &scanner).await?;
+    let target_host = url::Url::parse(&url)
+        .ok()
+        .and_then(|u| u.host_str().map(|s| s.to_string()));
+    let script_data = javascript::collect(&page, &scanner, target_host.as_deref()).await?;
 
     let DomArtifacts {
         forms,
@@ -251,6 +345,7 @@ async fn scan_url(
         api_endpoints,
         technologies,
         ast_findings,
+        vulnerabilities: script_vulns,
     } = script_data;
 
     let tester = ApiTester::new();
@@ -334,7 +429,8 @@ async fn scan_url(
         );
     }
 
-    let (vulnerabilities, security) = analyze_security(&raw_cookies);
+    let (mut vulnerabilities, security) = analyze_security(&raw_cookies);
+    vulnerabilities.extend(script_vulns);
 
     let result = ScanResult {
         url: url.clone(),
@@ -347,6 +443,7 @@ async fn scan_url(
             websockets: vec![],
             redirects: vec![],
             auth_schemes: vec![],
+            calls: all_calls,
         },
         dom: DomAnalysis {
             scripts: script_count,

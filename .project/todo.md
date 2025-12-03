@@ -11,28 +11,24 @@
 
 ## Crate Publishing Readiness
 - Keep `Cargo.toml` metadata (repository, homepage, documentation, readme, keywords, categories) accurate and in sync with README.
-- Resolve Git dependency on `chromiumoxide_stealth`; upstream release or vendor a crate.
-- Replace hard-coded Chrome path with CLI flag/env detection so binaries installed via cargo work cross-platform.
+- ✅ Removed git-only `chromiumoxide_stealth` dependency to unblock publish (add back later via crates.io/path dep if needed).
+- ✅ Replace hard-coded Chrome path with CLI flag/env detection so binaries installed via cargo work cross-platform.
 - Run `cargo fmt`, `cargo clippy -- -D warnings`, `cargo test`, and `cargo package --allow-dirty --dry-run` before publishing.
 - Create crates.io account + API token; configure `.cargo/credentials` locally for publish flow.
 
 ## CLI UX Changes
-- ✅ Replace positional `TARGET` file arg with explicit `--url <https://site>` flag (required) so the workflow is always single-target.
-- Drop the unused `--concurrency` flag (currently no effect) until multi-target scanning returns.
-- Optional secondary inputs:
-  - `--input-file <path>` for bulk testing (low priority)
-  - `--stdin` flag to read URLs from STDIN if we need later
-- Keep additional knobs minimal: `--timeout`, `--chrome-bin`, `--output-dir`, `--json-only`, `--markdown-only`, `--no-browser-cache`.
-- Update Clap definitions so `corrode --help` mirrors the new interface with practical examples.
-- Remove references to `targets.txt` from README/install instructions once CLI changes land.
+- ✅ CLI uses a required `--url <https://site>` (single-target) and no positional `targets.txt` flow; README/help are aligned.
+- ✅ Dropped the unused `--concurrency` flag.
+- Keep the CLI focused on single-target scans; defer bulk-input flags unless a strong UX case emerges.
+- Keep additional knobs minimal (`--timeout`, `--output-dir`) and only add more if UX demands it.
 
 ## Installation Strategy
 - Deprecate `install.sh` and redundant `make install` instructions once crate publish works; keep docs focused on `cargo install corrode` and local `cargo run --release`.
 - Provide guidance for Chromium dependency detection and installation.
 
 ## Documentation
-- Restore sanitized `targets.txt.example` or rewrite docs to focus on `--url` workflow.
-- Tighten README sections: quick start, prerequisites, Chrome path configuration, CLI flags, sample report, troubleshooting.
+- Keep docs focused on the single-target `--url` workflow; remove legacy `targets.txt` references.
+- Tighten README sections: quick start, prerequisites, Chrome path configuration, CLI flags, sample report, troubleshooting. ✅
 - Add mention of network capture limitations/status.
 - Write a clear disclaimer stating Corrode is for authorized testing only and the author (ul0gic) is not responsible for misuse.
 
@@ -80,18 +76,21 @@ src/
   - Parse inline/external scripts and walk the AST for fetch/axios/xhr URLs, literal URLs, and credential-like identifiers.
   - Tag findings with origin + line/col for triage and surface them alongside regex-based secret detection.
   - Keep parsing resilient (skip oversized/invalid scripts) so scans remain fast even on noisy bundles.
-- ✅ Fixtures added (`fixtures/sample.html/js`) and AST wired; secrets now detected (service_role/anon/publishable, OpenAI, Netlify, Stripe). Next: trim/no-log AST output when only third-party chatter to avoid noisy reports.
+- ✅ Fixtures added (`fixtures/sample.html/js`) and AST wired; secrets now detected (service_role/anon/publishable, OpenAI, Netlify, Stripe). Trimmed AST reporting to first-party scripts to cut third-party noise.
+- ✅ Detect React Server Components RCE (CVE-2025-55182) by spotting vulnerable react-server-dom-* versions; mark CRITICAL in reporting.
+- Queue CVE-specific detections once core pipeline is stable (e.g., CVE-2025-29927: https://github.com/aydinnyunus/CVE-2025-29927).
 - Beef up detection logic: expand secret patterns, storage/DOM heuristics, and wire in remaining API tests (`test_auth_differences`, `test_mass_assignment`).
-- Fix network header capture in `network::monitor` so reports include request/response metadata.
+- ✅ Capture request/response headers in `network::monitor` and persist full calls into JSON results; surface in Markdown later.
 
 ## Reporting Makeover
 - Redesign `reporting/markdown.rs` to produce a professional ASCII layout with distinct sections, summaries, and callouts.
 - Ensure JSON mirrors all new fields (headers, AST findings) and document the schema.
 - Add a `--format`/`--json-only` knob so users can tailor output.
+- Filter AST findings to first-party sources / sensitive kinds to avoid noisy reports.
 
 ## CLI & UX
-- After detectors/reporting feel solid, switch to the planned `corrode --url https://target` interface and remove the implicit `targets.txt` workflow.
-- Document the new CLI in README, drop `install.sh` instructions, and focus installation guidance on `cargo install`.
+- Keep CLI help/examples polished for the single-target `--url` flow; avoid reintroducing multi-target inputs.
+- Document the current CLI in README, drop `install.sh` once publish-ready, and focus installation guidance on `cargo install`.
 
 ## Tooling & QA
 - ✅ `cargo clippy -- -D warnings` now passes clean; keep it in CI to catch regressions.
@@ -100,7 +99,7 @@ src/
 ## Reporting Improvements
 - Output JSON and Markdown reports into the current working directory unless `--output-dir` overrides it.
 - JSON should include structured sections: secrets, network (full request/response metadata), API tests, DOM findings, recommendations.
-- Markdown companion (REPORT.md) with ASCII boxes / sections highlighting secrets, API endpoints, RLS/storage findings, network captures, remediation checklist.
+- Markdown companion (REPORT.md) with ASCII boxes / sections highlighting secrets, API endpoints, RLS/storage findings, network captures, remediation checklist (network section now includes key requests with headers).
 - Consider `--format json|md|both` for future flexibility.
 
 ## Network Monitoring Improvements
@@ -108,6 +107,7 @@ src/
 - Detect and label API endpoints (method, status, auth hints) from captured traffic; surface key ones in the Markdown report.
 - Consider storing HAR-like output for deeper debugging.
 - Verify async tasks don't leak; add graceful shutdown.
+- Add websocket monitoring (capture frames/URLs) and basic GraphQL detection.
 
 ## Testing & QA
 - Add integration smoke test hitting a mock server to validate scanning pipeline without Chrome (feature flag?).
@@ -116,3 +116,15 @@ src/
 ## Account / Release Logistics
 - Create crates.io org/user, link GitHub, configure access.
 - Tag releases (`v0.1.0` etc.), publish GitHub Releases with changelog.
+
+## Roadmap & Features in Progress
+- GraphQL schema extraction and testing
+- WebSocket monitoring and analysis
+- Enhanced header security analysis
+- SQL injection pattern detection in discovered endpoints
+- XSS vulnerability testing
+- Enhanced CORS misconfiguration detection
+- Browser storage (localStorage/sessionStorage) security analysis
+- Custom pattern definitions via config file
+- HTML report generation
+- Integration with vulnerability databases

@@ -3,7 +3,7 @@ use serde_json;
 use std::fs;
 use std::path::Path;
 
-use crate::types::{ApiTestResult, ScanResult, Vulnerability};
+use crate::types::{ApiCall, ApiTestResult, ScanResult, Vulnerability};
 
 fn severity_rank(label: &str) -> u8 {
     match label.to_lowercase().as_str() {
@@ -59,6 +59,70 @@ fn wrap_entry(label: &str, value: &str, max_line: usize) -> Vec<String> {
         }
     }
 
+    lines
+}
+
+fn truncate_middle(value: &str, max_len: usize) -> String {
+    if value.len() <= max_len || max_len < 8 {
+        return value.to_string();
+    }
+    let head = max_len / 2 - 2;
+    let tail = max_len - head - 3;
+    format!("{}...{}", &value[..head], &value[value.len() - tail..])
+}
+
+fn header_hints(headers: &std::collections::HashMap<String, String>) -> String {
+    let mut hits = Vec::new();
+    for key in [
+        "authorization",
+        "cookie",
+        "x-api-key",
+        "x-auth-token",
+        "x-client-id",
+    ] {
+        if headers.keys().any(|k| k.eq_ignore_ascii_case(key)) {
+            hits.push(key.replace('-', " ").to_uppercase());
+        }
+    }
+    if hits.is_empty() {
+        "-".to_string()
+    } else {
+        hits.join(", ")
+    }
+}
+
+fn is_api_like(url: &str) -> bool {
+    url.contains("/api/")
+        || url.contains("/graphql")
+        || url.contains("/v1/")
+        || url.contains("/v2/")
+        || url.contains("/v3/")
+        || url.ends_with(".json")
+}
+
+fn format_calls_table(calls: &[ApiCall]) -> Vec<String> {
+    let mut lines = Vec::new();
+    lines.push("```".to_string());
+    lines.push(format!(
+        "{:<6} {:<6} {:<70} {}",
+        "METHOD", "CODE", "URL", "HEADERS"
+    ));
+    for call in calls {
+        let method = if call.method.is_empty() {
+            "GET".to_string()
+        } else {
+            call.method.clone()
+        };
+        let status = if call.status == 0 {
+            "-".to_string()
+        } else {
+            call.status.to_string()
+        };
+        let url = truncate_middle(&call.url, 70);
+        let hints = header_hints(&call.request_headers);
+        lines.push(format!("{:<6} {:<6} {:<70} {}", method, status, url, hints));
+    }
+    lines.push("```".to_string());
     lines
 }
 
@@ -204,6 +268,41 @@ pub fn write(result: &ScanResult, base_output_dir: &Path) -> Result<()> {
                 }
                 report.push(String::new());
             }
+        }
+    }
+
+    if result.network.total_requests > 0 || !result.network.calls.is_empty() {
+        report.push("---\n## 🌐 Network Activity\n".to_string());
+        report.push(format!(
+            "- Total Requests: {}",
+            result.network.total_requests
+        ));
+        report.push(format!(
+            "- API-like Requests: {}",
+            result.network.api_calls.len()
+        ));
+        report.push(format!(
+            "- Third-Party Requests: {}",
+            result.network.third_party.len()
+        ));
+
+        let mut calls = result
+            .network
+            .calls
+            .iter()
+            .filter(|c| is_api_like(&c.url))
+            .take(10)
+            .cloned()
+            .collect::<Vec<ApiCall>>();
+
+        if calls.is_empty() {
+            calls = result.network.calls.iter().take(10).cloned().collect();
+        }
+
+        if !calls.is_empty() {
+            report.push("Key Requests (method, status, auth hints):".to_string());
+            report.extend(format_calls_table(&calls));
+            report.push(String::new());
         }
     }
 
