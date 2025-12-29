@@ -233,7 +233,7 @@ impl AstAnalyzer {
             value.starts_with("pk_") || value.starts_with("sk_") || value.starts_with("nfp_");
         let long_secret = value.len() > 80;
 
-        key_hint || looks_jwt || looks_url || looks_keyish || (long_secret && key_hint)
+        key_hint || looks_jwt || looks_url || looks_keyish || long_secret
     }
 }
 

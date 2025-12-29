@@ -1,8 +1,8 @@
 # 🦀 Corrode
 
-**High-performance security scanner for finding exposed credentials, secrets, and vulnerabilities in web applications**
+**Passive reconnaissance tool for extracting secrets, credentials, and security-relevant data from web applications**
 
-Built with Rust and chromiumoxide for blazing-fast scanning with comprehensive security analysis.
+Built with Rust and chromiumoxide for fast, headless scanning. Corrode performs passive analysis only—no active exploitation or fuzzing. Use its output to inform manual penetration testing and security assessments.
 
 [![Rust](https://img.shields.io/badge/rust-1.70%2B-orange.svg)](https://www.rust-lang.org/)
 [![License: AGPL v3](https://img.shields.io/badge/license-AGPL--3.0-blue.svg)](LICENSE)
@@ -11,7 +11,7 @@ Built with Rust and chromiumoxide for blazing-fast scanning with comprehensive s
 
 ```
 src/
-├── api/                  # API discovery + testing harnesses
+├── api/                  # API endpoint discovery (passive extraction from JS)
 ├── cli.rs                # CLI definitions
 ├── config.rs             # Config normalization
 ├── detectors/            # Secrets, DOM, JS (and AST) collectors
@@ -104,8 +104,7 @@ graph TD
 - 📊 **Comprehensive Reporting** - JSON results and detailed Markdown reports per site
 
 ### Advanced Analysis
-- 🔐 **API Discovery** - Automatically discovers API endpoints from JavaScript code
-- 🎯 **API Vulnerability Testing** - Tests for authentication bypass, IDOR, and other API vulnerabilities
+- 🔐 **API Endpoint Discovery** - Extracts API endpoints from JavaScript for manual testing
 - 🛠️ **Technology Detection** - Identifies 40+ frameworks, libraries, and services in use
 - 🔎 **DOM Analysis** - Analyzes forms, hidden inputs, iframes, meta tags, and data attributes
 - 🍪 **Cookie Security Analysis** - Checks for insecure cookie configurations
@@ -220,16 +219,7 @@ Corrode detects 30+ types of secrets and credentials:
 - 🌐 **IP Addresses** - Internal IP exposure
 - 🔗 **JWT in URLs** - Tokens passed in query parameters
 
-## Vulnerability Detection
-
-### API Security Testing
-- 🔓 **Authentication Bypass** - Tests if APIs are accessible without credentials
-- 🎯 **IDOR (Insecure Direct Object Reference)** - Tests for unauthorized access to objects
-- 🔑 **Missing Authentication Checks** - Identifies endpoints that don't validate tokens
-- 📂 **Publicly Accessible APIs** - Finds APIs returning data without authentication
-- ⚠️ **Mass Assignment** - Tests for dangerous parameter injection
-
-### Security Issues
+## Security Issue Detection
 - 🍪 **Insecure Cookies** - Missing Secure, HttpOnly, or SameSite flags
 - 🐛 **Debug Mode Detection** - Identifies debug mode enabled in production
 - 📍 **Source Map Exposure** - Flags exposed source maps that aid reverse engineering
@@ -249,18 +239,13 @@ Corrode automatically identifies 40+ technologies:
 **Libraries**: jQuery, Bootstrap, Tailwind CSS, Material-UI
 **State Management**: Redux, MobX, Zustand, Apollo Client, Relay
 
-## Roadmap & Features in Progress
+## Roadmap
 
-- [ ] GraphQL schema extraction and testing
-- [ ] WebSocket monitoring and analysis
+- [ ] GraphQL endpoint and schema extraction
+- [ ] WebSocket URL discovery
 - [ ] Enhanced header security analysis
-- [ ] SQL injection pattern detection in discovered endpoints
-- [ ] XSS vulnerability testing
-- [ ] Enhanced CORS misconfiguration detection
-- [ ] Browser storage (localStorage/sessionStorage) security analysis
-- [ ] Custom pattern definitions via config file
+- [ ] Custom secret pattern definitions via config file
 - [ ] HTML report generation
-- [ ] Integration with vulnerability databases
 
 ## Disclaimer
 

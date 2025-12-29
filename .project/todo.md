@@ -1,130 +1,55 @@
 # Corrode Release TODO
 
 ## Vision
-- Ship Corrode as an ergonomic single-target security scanner installable via `cargo install corrode`
-- Provide polished documentation, helpful CLI UX (`corrode --url https://example.com`), and production-ready reporting
-- Keep the codebase modular: each capability (secret detection, DOM analysis, network capture, reporting) belongs in its own module for easy growth
+Corrode is a **passive reconnaissance tool** for web security assessments. It extracts secrets, credentials, API endpoints, and security-relevant data from web applications without making active exploitation requests. Output is designed to inform manual penetration testing.
 
-## Licensing
-- ✅ Adopt AGPL-3.0-only with ul0gic attribution; `Cargo.toml`, README, LICENSE, and CONTRIBUTING all aligned.
-- Document contribution guidelines to ensure inbound code stays compatible (done in CONTRIBUTING).
+## Scope (Passive Only)
+- ✅ Load target URL in headless Chrome
+- ✅ Extract secrets from HTML, JS, DOM, cookies, localStorage
+- ✅ Capture network traffic (requests made by the page)
+- ✅ Discover API endpoints from JavaScript (for manual testing)
+- ✅ Fingerprint technologies
+- ✅ Report findings in JSON + Markdown
+- ❌ NO active API testing (auth bypass, IDOR, fuzzing)
+- ❌ NO active exploitation or injection testing
 
-## Crate Publishing Readiness
-- Keep `Cargo.toml` metadata (repository, homepage, documentation, readme, keywords, categories) accurate and in sync with README.
-- ✅ Removed git-only `chromiumoxide_stealth` dependency to unblock publish (add back later via crates.io/path dep if needed).
-- ✅ Replace hard-coded Chrome path with CLI flag/env detection so binaries installed via cargo work cross-platform.
-- Run `cargo fmt`, `cargo clippy -- -D warnings`, `cargo test`, and `cargo package --allow-dirty --dry-run` before publishing.
-- Create crates.io account + API token; configure `.cargo/credentials` locally for publish flow.
+## Crate Publishing Checklist
+- ✅ `Cargo.toml` metadata complete (repository, homepage, keywords, categories)
+- ✅ AGPL-3.0-only license with ul0gic attribution
+- ✅ Chrome binary auto-detection + `--chrome-bin` override
+- ✅ `cargo clippy -- -D warnings` passes clean
+- ✅ Removed active API testing module
+- [ ] Create crates.io account + API token
+- [ ] Run `cargo publish --dry-run` final validation
+- [ ] Tag v0.1.0 release
 
-## CLI UX Changes
-- ✅ CLI uses a required `--url <https://site>` (single-target) and no positional `targets.txt` flow; README/help are aligned.
-- ✅ Dropped the unused `--concurrency` flag.
-- Keep the CLI focused on single-target scans; defer bulk-input flags unless a strong UX case emerges.
-- Keep additional knobs minimal (`--timeout`, `--output-dir`) and only add more if UX demands it.
-
-## Installation Strategy
-- Deprecate `install.sh` and redundant `make install` instructions once crate publish works; keep docs focused on `cargo install corrode` and local `cargo run --release`.
-- Provide guidance for Chromium dependency detection and installation.
-
-## Documentation
-- Keep docs focused on the single-target `--url` workflow; remove legacy `targets.txt` references.
-- Tighten README sections: quick start, prerequisites, Chrome path configuration, CLI flags, sample report, troubleshooting. ✅
-- Add mention of network capture limitations/status.
-- Write a clear disclaimer stating Corrode is for authorized testing only and the author (ul0gic) is not responsible for misuse.
-
-## Code Organization & Refactors
-- ✅ Broke `src/main.rs` apart: CLI/config/detector modules plus `scanner::workflow` now own the scanning pipeline, and reporting lives in `reporting::json`/`reporting::markdown`.
-- ✅ Extracted DOM + JavaScript detectors into `detectors::dom` and `detectors::javascript` with `scanner::page_utils` helpers so `workflow` simply orchestrates stages.
-- Break remaining logic into finer helpers as needed:
-
+## Current Structure
 ```
 src/
-├── main.rs                 # entry point: parse CLI, call scanner::run
-├── cli.rs                  # Clap definitions + config builder
-├── config.rs               # normalized runtime configuration
+├── main.rs              # entry point
+├── cli.rs               # Clap definitions
+├── config.rs            # runtime configuration
+├── types.rs             # shared data structures
 ├── scanner/
-│   ├── mod.rs              # exposes run(config)
-│   ├── browser.rs          # chromiumoxide setup + page helpers
-│   └── workflow.rs         # orchestrates a single scan (current scan_url)
+│   ├── workflow.rs      # orchestrates scan
+│   └── page_utils.rs    # DOM interaction helpers
 ├── detectors/
-│   ├── mod.rs
-│   ├── secrets.rs          # SECRET_PATTERNS + SecretScanner
-│   ├── dom.rs              # DOM/forms/iframes/data-attrs extraction
-│   ├── javascript.rs       # script fetching, window objects
-│   └── technologies.rs     # tech fingerprinting logic
-├── network/
-│   ├── mod.rs
-│   └── monitor.rs          # existing NetworkMonitor
+│   ├── secrets.rs       # regex-based secret patterns
+│   ├── ast.rs           # swc-based JS analysis
+│   ├── dom.rs           # forms, cookies, storage
+│   └── javascript.rs    # script extraction, window objects
 ├── api/
-│   ├── discovery.rs        # existing api_discovery.rs
-│   └── testing.rs          # existing api_testing.rs
-├── reporting/
-│   ├── mod.rs
-│   ├── json.rs             # ScanResult → JSON
-│   └── markdown.rs         # ScanResult → REPORT.md
-├── types.rs                # shared structs for everything (now canonical)
-└── vulnerability.rs        # optional home for vuln definitions
+│   └── discovery.rs     # passive endpoint extraction from JS
+├── network/
+│   └── monitor.rs       # Chrome DevTools network capture
+└── reporting/
+    ├── json.rs          # JSON output
+    └── markdown.rs      # Markdown report
 ```
 
-- ✅ CLI parsing lives in `cli.rs`, config in `config.rs`, detectors/reporting/scanner modules are active.
-- Next: continue refining modules (e.g., split `scanner::workflow` into smaller files/functions, add `detectors::dom`, etc.).
-- Remove unused `src/vulnerability.rs` or repurpose it for vulnerability definitions/reporting.
-- Ensure every module consumes the shared structs from `types.rs` (no duplication).
-
-## Detection Enhancements
-- Add AST-based JavaScript analysis (via swc or similar) to find deeply embedded secrets/endpoints beyond regex patterns.
-  - Parse inline/external scripts and walk the AST for fetch/axios/xhr URLs, literal URLs, and credential-like identifiers.
-  - Tag findings with origin + line/col for triage and surface them alongside regex-based secret detection.
-  - Keep parsing resilient (skip oversized/invalid scripts) so scans remain fast even on noisy bundles.
-- ✅ Fixtures added (`fixtures/sample.html/js`) and AST wired; secrets now detected (service_role/anon/publishable, OpenAI, Netlify, Stripe). Trimmed AST reporting to first-party scripts to cut third-party noise.
-- ✅ Detect React Server Components RCE (CVE-2025-55182) by spotting vulnerable react-server-dom-* versions; mark CRITICAL in reporting.
-- Queue CVE-specific detections once core pipeline is stable (e.g., CVE-2025-29927: https://github.com/aydinnyunus/CVE-2025-29927).
-- Beef up detection logic: expand secret patterns, storage/DOM heuristics, and wire in remaining API tests (`test_auth_differences`, `test_mass_assignment`).
-- ✅ Capture request/response headers in `network::monitor` and persist full calls into JSON results; surface in Markdown later.
-
-## Reporting Makeover
-- Redesign `reporting/markdown.rs` to produce a professional ASCII layout with distinct sections, summaries, and callouts.
-- Ensure JSON mirrors all new fields (headers, AST findings) and document the schema.
-- ✅ Add a `--format`/`--json-only` knob so users can tailor output.
-- ✅ Filter AST findings to first-party sources / sensitive kinds to avoid noisy reports.
-
-## CLI & UX
-- Keep CLI help/examples polished for the single-target `--url` flow; avoid reintroducing multi-target inputs.
-- Document the current CLI in README, drop `install.sh` once publish-ready, and focus installation guidance on `cargo install`.
-
-## Tooling & QA
-- ✅ `cargo clippy -- -D warnings` now passes clean; keep it in CI to catch regressions.
-- Add unit/integration tests for detectors and API testers; wire into CI before crates.io publish.
-
-## Reporting Improvements
-- Output JSON and Markdown reports into the current working directory unless `--output-dir` overrides it.
-- JSON should include structured sections: secrets, network (full request/response metadata), API tests, DOM findings, recommendations.
-- Markdown companion (REPORT.md) with ASCII boxes / sections highlighting secrets, API endpoints, RLS/storage findings, network captures, remediation checklist (network section now includes key requests with headers).
-- Consider `--format json|md|both` for future flexibility.
-
-## Network Monitoring Improvements
-- ✅ Finish header capture in `network_monitor.rs`; ensure request/response headers populate properly and API calls are persisted to the JSON/Markdown reports.
-- Detect and label API endpoints (method, status, auth hints) from captured traffic; surface key ones in the Markdown report.
-- Consider storing HAR-like output for deeper debugging.
-- Verify async tasks don't leak; add graceful shutdown.
-- Add websocket monitoring (capture frames/URLs) and basic GraphQL detection.
-
-## Testing & QA
-- Add integration smoke test hitting a mock server to validate scanning pipeline without Chrome (feature flag?).
-- Add unit tests for `api_discovery`, `api_testing` helpers.
-
-## Account / Release Logistics
-- Create crates.io org/user, link GitHub, configure access.
-- Tag releases (`v0.1.0` etc.), publish GitHub Releases with changelog.
-
-## Roadmap & Features in Progress
-- GraphQL schema extraction and testing
-- WebSocket monitoring and analysis
-- Enhanced header security analysis
-- SQL injection pattern detection in discovered endpoints
-- XSS vulnerability testing
-- Enhanced CORS misconfiguration detection
-- Browser storage (localStorage/sessionStorage) security analysis
-- Custom pattern definitions via config file
-- HTML report generation
-- Integration with vulnerability databases
+## Roadmap (Passive Features)
+- [ ] GraphQL endpoint and schema extraction
+- [ ] WebSocket URL discovery
+- [ ] Enhanced header security analysis
+- [ ] Custom secret pattern definitions via config file
+- [ ] HTML report generation

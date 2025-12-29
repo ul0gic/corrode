@@ -85,10 +85,7 @@ lazy_static! {
             Regex::new(r"SG\.[A-Za-z0-9_-]{22}\.[A-Za-z0-9_-]{43}").unwrap(),
         );
         m.insert("twilio", Regex::new(r"SK[0-9a-fA-F]{32}").unwrap());
-        m.insert(
-            "twilio_account",
-            Regex::new(r"AC[a-zA-Z0-9_\-]{32}").unwrap(),
-        );
+        m.insert("twilio_account", Regex::new(r"AC[0-9a-fA-F]{32}").unwrap());
         m.insert(
             "private_key",
             Regex::new(r"-----BEGIN (RSA |EC |OPENSSH )?PRIVATE KEY-----").unwrap(),

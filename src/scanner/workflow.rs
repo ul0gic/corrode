@@ -9,7 +9,6 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio::time;
 
-use crate::api::testing::ApiTester;
 use crate::config::{Config, OutputFormat};
 use crate::detectors::{
     dom::{self, DomArtifacts},
@@ -353,60 +352,6 @@ async fn scan_url(
         vulnerabilities: script_vulns,
     } = script_data;
 
-    let tester = ApiTester::new();
-    let mut api_tests = Vec::new();
-
-    for endpoint in &api_endpoints {
-        if let Some(result) = tester.test_auth_bypass(endpoint, &url).await {
-            if verbose {
-                println!(
-                    "{} {} - {}",
-                    "[!]".red().bold(),
-                    result.test_type,
-                    result.endpoint
-                );
-            }
-            api_tests.push(result);
-        }
-
-        let idor_results = tester.test_idor(endpoint, &url).await;
-        for result in idor_results {
-            if verbose {
-                println!(
-                    "{} {} - {}",
-                    "[!]".red().bold(),
-                    result.test_type,
-                    result.endpoint
-                );
-            }
-            api_tests.push(result);
-        }
-
-        if let Some(result) = tester.test_auth_differences(endpoint, &url).await {
-            if verbose {
-                println!(
-                    "{} {} - {}",
-                    "[!]".red().bold(),
-                    result.test_type,
-                    result.endpoint
-                );
-            }
-            api_tests.push(result);
-        }
-
-        if let Some(result) = tester.test_mass_assignment(endpoint, &url).await {
-            if verbose {
-                println!(
-                    "{} {} - {}",
-                    "[!]".red().bold(),
-                    result.test_type,
-                    result.endpoint
-                );
-            }
-            api_tests.push(result);
-        }
-    }
-
     let elapsed = start.elapsed();
     let secrets = scanner.get_findings().await;
     let comments = scanner.get_comments().await;
@@ -473,7 +418,7 @@ async fn scan_url(
         technologies,
         vulnerabilities,
         comments,
-        api_tests,
+        api_tests: vec![],
         success: true,
         error: None,
     };
