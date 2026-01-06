@@ -110,10 +110,10 @@ graph TD
 
 ## Installation
 
-### Install via Cargo (planned crates.io release)
+### Install via Cargo
 
 ```bash
-cargo install corrode
+cargo install corrode-scanner
 ```
 
 For local development (from source):
