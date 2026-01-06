@@ -14,13 +14,22 @@ lazy_static! {
             "supabase_url",
             Regex::new(r"https://[a-z0-9]+\.supabase\.co").unwrap(),
         );
-        m.insert("supabase_anon_key", Regex::new(r"sb[a-z]{38}").unwrap());
+        // New Supabase key formats (2024+)
+        // Note: Legacy anon/service_role JWTs are detected via the jwt pattern + role parsing
+        m.insert(
+            "supabase_publishable",
+            Regex::new(r"sb_publishable_[A-Za-z0-9_-]{20,}").unwrap(),
+        );
+        m.insert(
+            "supabase_secret",
+            Regex::new(r"sb_secret_[A-Za-z0-9_-]{20,}").unwrap(),
+        );
         m.insert(
             "jwt",
             Regex::new(r"eyJ[A-Za-z0-9_\-]+\.[A-Za-z0-9_\-]+\.[A-Za-z0-9_\-]+").unwrap(),
         );
         m.insert(
-            "supabase_publishable_key",
+            "stripe_publishable_key",
             Regex::new(r"pk_(?:live|test)_[A-Za-z0-9]{20,}").unwrap(),
         );
         m.insert(
@@ -116,7 +125,7 @@ lazy_static! {
         );
         m.insert(
             "basic_auth",
-            Regex::new(r"(?i)basic\s+[a-zA-Z0-9+/]+=*").unwrap(),
+            Regex::new(r"(?i)basic\s+[a-zA-Z0-9+/]{20,}={0,2}").unwrap(),
         );
         m.insert(
             "aws_arn",
@@ -126,9 +135,11 @@ lazy_static! {
             "jwt_in_url",
             Regex::new(r"[?&](?:token|jwt|access_token|id_token)=eyJ[A-Za-z0-9_\-]+\.[A-Za-z0-9_\-]+\.[A-Za-z0-9_\-]+").unwrap(),
         );
+        // Only match private/internal IP ranges (security concern = exposing internal infra)
+        // 10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16
         m.insert(
-            "ip_address",
-            Regex::new(r"\b(?:[0-9]{1,3}\.){3}[0-9]{1,3}\b").unwrap(),
+            "internal_ip",
+            Regex::new(r"\b(?:10\.(?:25[0-5]|2[0-4]\d|1?\d?\d)\.(?:25[0-5]|2[0-4]\d|1?\d?\d)\.(?:25[0-5]|2[0-4]\d|1?\d?\d)|172\.(?:1[6-9]|2\d|3[0-1])\.(?:25[0-5]|2[0-4]\d|1?\d?\d)\.(?:25[0-5]|2[0-4]\d|1?\d?\d)|192\.168\.(?:25[0-5]|2[0-4]\d|1?\d?\d)\.(?:25[0-5]|2[0-4]\d|1?\d?\d))\b").unwrap(),
         );
         m
     };
@@ -197,6 +208,12 @@ impl SecretScanner {
                         .filter(|jwt| is_anon_jwt(jwt))
                         .cloned()
                         .collect();
+                    // JWTs not categorized as Supabase anon/service_role
+                    let other_jwts: Vec<String> = matches_vec
+                        .iter()
+                        .filter(|jwt| !is_service_role_jwt(jwt) && !is_anon_jwt(jwt))
+                        .cloned()
+                        .collect();
 
                     if !service_role_jwts.is_empty() {
                         findings
@@ -217,6 +234,18 @@ impl SecretScanner {
                                 matches: anon_jwts,
                             });
                     }
+
+                    // Only add uncategorized JWTs to generic "jwt" bucket
+                    if !other_jwts.is_empty() {
+                        findings
+                            .entry("jwt".to_string())
+                            .or_insert_with(Vec::new)
+                            .push(SecretFinding {
+                                source: source.to_string(),
+                                matches: other_jwts,
+                            });
+                    }
+                    continue;
                 }
 
                 findings

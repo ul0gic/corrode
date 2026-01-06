@@ -379,7 +379,7 @@ async fn scan_url(
         );
     }
 
-    let (mut vulnerabilities, security) = analyze_security(&raw_cookies);
+    let (mut vulnerabilities, security) = analyze_security(&raw_cookies, &all_calls, &url);
     vulnerabilities.extend(script_vulns);
 
     let result = ScanResult {
@@ -432,10 +432,16 @@ async fn scan_url(
 
 fn analyze_security(
     cookies: &[chromiumoxide::cdp::browser_protocol::network::Cookie],
+    calls: &[crate::types::ApiCall],
+    target_url: &str,
 ) -> (Vec<Vulnerability>, SecurityAnalysis) {
     let mut vulnerabilities = Vec::new();
     let mut insecure_cookies = Vec::new();
+    let mut cors_issues = Vec::new();
+    let mut missing_headers = Vec::new();
+    let mut mixed_content = Vec::new();
 
+    // Check cookies
     for cookie in cookies {
         if !cookie.secure || !cookie.http_only {
             insecure_cookies.push(cookie.name.clone());
@@ -452,11 +458,87 @@ fn analyze_security(
         });
     }
 
+    let target_is_https = target_url.starts_with("https://");
+
+    // Analyze first-party document response for headers and CORS
+    for call in calls {
+        // Check for wildcard CORS (on any response)
+        if let Some(acao) = call.response_headers.get("access-control-allow-origin")
+            .or_else(|| call.response_headers.get("Access-Control-Allow-Origin"))
+        {
+            if acao == "*" {
+                cors_issues.push(call.url.clone());
+            }
+        }
+
+        // Check for mixed content (HTTPS page loading HTTP resources)
+        if target_is_https && call.url.starts_with("http://") {
+            mixed_content.push(call.url.clone());
+        }
+
+        // Check security headers on the main document (first HTML response)
+        if call.url == target_url || call.url.starts_with(target_url) {
+            if let Some(ct) = &call.response_content_type {
+                if ct.contains("text/html") {
+                    let headers_lower: std::collections::HashMap<String, String> = call
+                        .response_headers
+                        .iter()
+                        .map(|(k, v)| (k.to_lowercase(), v.clone()))
+                        .collect();
+
+                    if !headers_lower.contains_key("content-security-policy") {
+                        missing_headers.push("Content-Security-Policy".to_string());
+                    }
+                    if !headers_lower.contains_key("strict-transport-security") {
+                        missing_headers.push("Strict-Transport-Security".to_string());
+                    }
+                    if !headers_lower.contains_key("x-frame-options") {
+                        missing_headers.push("X-Frame-Options".to_string());
+                    }
+                    if !headers_lower.contains_key("x-content-type-options") {
+                        missing_headers.push("X-Content-Type-Options".to_string());
+                    }
+                }
+            }
+        }
+    }
+
+    // Add vulnerabilities for findings
+    if !cors_issues.is_empty() {
+        vulnerabilities.push(Vulnerability {
+            vuln_type: "CORS Misconfiguration".to_string(),
+            severity: "medium".to_string(),
+            description: format!("Wildcard Access-Control-Allow-Origin found on {} endpoint(s)", cors_issues.len()),
+            remediation: "Restrict CORS to specific trusted origins instead of using wildcard (*)".to_string(),
+            url: None,
+        });
+    }
+
+    if !missing_headers.is_empty() {
+        vulnerabilities.push(Vulnerability {
+            vuln_type: "Missing Security Headers".to_string(),
+            severity: "low".to_string(),
+            description: format!("Missing headers: {}", missing_headers.join(", ")),
+            remediation: "Add security headers: CSP, HSTS, X-Frame-Options, X-Content-Type-Options".to_string(),
+            url: None,
+        });
+    }
+
+    if !mixed_content.is_empty() {
+        vulnerabilities.push(Vulnerability {
+            vuln_type: "Mixed Content".to_string(),
+            severity: "low".to_string(),
+            description: format!("{} HTTP resource(s) loaded on HTTPS page", mixed_content.len()),
+            remediation: "Ensure all resources are loaded over HTTPS".to_string(),
+            url: None,
+        });
+    }
+
     let security = SecurityAnalysis {
-        missing_headers: vec![],
-        cors_issues: vec![],
+        missing_headers,
+        cors_issues,
         insecure_cookies,
-        mixed_content: vec![],
+        mixed_content,
     };
 
     (vulnerabilities, security)

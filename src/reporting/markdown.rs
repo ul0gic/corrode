@@ -184,22 +184,6 @@ pub fn write(result: &ScanResult, base_output_dir: &Path) -> Result<()> {
         .filter(|v| v.severity == "low")
         .count();
 
-    let api_critical = result
-        .api_tests
-        .iter()
-        .filter(|t| t.vulnerable && t.severity.eq_ignore_ascii_case("critical"))
-        .count();
-    let api_high = result
-        .api_tests
-        .iter()
-        .filter(|t| t.vulnerable && t.severity.eq_ignore_ascii_case("high"))
-        .count();
-    let api_medium = result
-        .api_tests
-        .iter()
-        .filter(|t| t.vulnerable && t.severity.eq_ignore_ascii_case("medium"))
-        .count();
-
     let secret_count = result.secrets.len();
 
     let secret_has_service_role = result.secrets.contains_key("supabase_service_role");
@@ -210,9 +194,6 @@ pub fn write(result: &ScanResult, base_output_dir: &Path) -> Result<()> {
     }
     for v in &result.vulnerabilities {
         highest = highest.max(severity_rank(&v.severity));
-    }
-    for test in result.api_tests.iter().filter(|t| t.vulnerable) {
-        highest = highest.max(severity_rank(&test.severity));
     }
 
     let risk_level = match highest {
@@ -227,9 +208,6 @@ pub fn write(result: &ScanResult, base_output_dir: &Path) -> Result<()> {
     report.push(format!("- High Vulnerabilities: {}", high_vulns));
     report.push(format!("- Medium Vulnerabilities: {}", medium_vulns));
     report.push(format!("- Low Vulnerabilities: {}", low_vulns));
-    report.push(format!("- Critical API Findings: {}", api_critical));
-    report.push(format!("- High API Findings: {}", api_high));
-    report.push(format!("- Medium API Findings: {}", api_medium));
     report.push(format!("- Secret Types Found: {}", secret_count));
     report.push(format!(
         "- Technologies Detected: {}\n",

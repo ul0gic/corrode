@@ -36,10 +36,8 @@ graph TD
     B --> E[Script + AST Scanner]
     E --> G[Secret Scanner]
     D --> H[Tech Fingerprinter]
-    C --> F[API Discovery & Tests]
-    F --> I[Security Checks]
+    C --> I[Security Analysis]
     G --> Results[Reporting JSON + MD]
-    F --> Results
     C --> Results
     D --> Results
     H --> Results
@@ -58,15 +56,14 @@ graph TD
     B --> N[Network Tracking]
     B --> S[HTML/Script Extraction]
     S --> SC[Secret Scanner]
-    SC --> API[API Discovery]
-    API --> T[Security Tests]
-    T --> R[Reporter]
+    N --> SEC[Security Analysis]
+    SC --> R[Reporter]
+    SEC --> R
     N --> R
-    B --> R
     R --> OUT[JSON + Markdown Output]
 
     classDef green fill:#d1fae5,stroke:#059669,stroke-width:2px,color:#000
-    class U,CLI,B,N,S,SC,API,T,R,OUT green
+    class U,CLI,B,N,S,SC,SEC,R,OUT green
 ```
 
 ### Secret Detection Pipeline
@@ -192,7 +189,8 @@ Corrode detects 30+ types of secrets and credentials:
 - ☁️ **Heroku API Keys** - UUID format keys
 
 ### Payment & Financial
-- 💳 **Stripe Live Keys** - sk_live keys
+- 💳 **Stripe Publishable Keys** - pk_live/pk_test keys
+- 💳 **Stripe Secret Keys** - sk_live keys
 - 💳 **Stripe Restricted Keys** - rk_live keys
 
 ### Communication & Collaboration
@@ -216,15 +214,19 @@ Corrode detects 30+ types of secrets and credentials:
 - 🗄️ **Redis URLs** - Connection strings with credentials
 
 ### Other
-- 🌐 **IP Addresses** - Internal IP exposure
+- 🌐 **Internal IPs** - Private network IP exposure (10.x, 172.16-31.x, 192.168.x)
 - 🔗 **JWT in URLs** - Tokens passed in query parameters
+- 🚀 **Netlify Tokens** - Personal access tokens (nfp_)
+- 🗄️ **Supabase New Keys** - sb_publishable_ and sb_secret_ formats
 
 ## Security Issue Detection
 - 🍪 **Insecure Cookies** - Missing Secure, HttpOnly, or SameSite flags
+- 🔍 **CORS Misconfiguration** - Detects wildcard Access-Control-Allow-Origin headers
+- 🛡️ **Missing Security Headers** - CSP, HSTS, X-Frame-Options, X-Content-Type-Options
+- 🔓 **Mixed Content** - HTTP resources loaded on HTTPS pages
 - 🐛 **Debug Mode Detection** - Identifies debug mode enabled in production
 - 📍 **Source Map Exposure** - Flags exposed source maps that aid reverse engineering
-- 🔍 **CORS Issues** - Detects problematic CORS configurations
-- 🔓 **Mixed Content** - Identifies insecure resources on HTTPS pages
+- ⚠️ **CVE-2025-55182** - React Server Components RCE vulnerability detection
 
 ### Technology Detection
 
@@ -241,11 +243,9 @@ Corrode automatically identifies 40+ technologies:
 
 ## Roadmap
 
-- [ ] GraphQL endpoint and schema extraction
-- [ ] WebSocket URL discovery
-- [ ] Enhanced header security analysis
 - [ ] Custom secret pattern definitions via config file
 - [ ] HTML report generation
+- [ ] Additional CVE detectors
 
 ## Disclaimer
 
