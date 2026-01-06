@@ -129,8 +129,24 @@ cargo build --release
 | Requirement          | Details                                    |
 | -------------------- | ------------------------------------------ |
 | Rust                 | 1.70+ (install from [rustup.rs](https://rustup.rs)) |
-| Chrome/Chromium      | Installed and discoverable; auto-detected, or override with `--chrome-bin`/`CHROME_BIN` |
+| Chrome/Chromium      | Required for headless scanning (see below) |
 | OS                   | Linux/macOS                                |
+
+#### Installing Chrome/Chromium
+
+**Linux (Debian/Ubuntu):**
+```bash
+wget -qO - https://dl.google.com/linux/linux_signing_key.pub | sudo apt-key add -
+sudo sh -c 'echo "deb [arch=amd64] http://dl.google.com/linux/chrome/deb/ stable main" >> /etc/apt/sources.list.d/google-chrome.list'
+sudo apt update && sudo apt install google-chrome-stable
+```
+
+**macOS:**
+```bash
+brew install --cask google-chrome
+```
+
+Chrome is auto-detected via PATH and common install locations. Override with `--chrome-bin <path>` or `CHROME_BIN` env var if needed.
 
 ## Usage
 
@@ -146,8 +162,6 @@ cargo build --release
 | `--format <fmt>`     | Output format: `json`, `md`, or `both`                                  | `both`            |          |
 | `-h, --help`         | Show help                                                               | –                 |          |
 | `-V, --version`      | Show version                                                            | –                 |          |
-
-Chrome/Chromium is auto-detected via PATH and common install locations. Override with `--chrome-bin <path>` or `CHROME_BIN`/`CHROMIUM_BIN` if you have a nonstandard install.
 
 ### Usage Examples
 
