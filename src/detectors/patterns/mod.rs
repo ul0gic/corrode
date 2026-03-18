@@ -1,8 +1,11 @@
+mod ai;
 mod auth;
 mod cloud;
+mod collaboration;
 mod communication;
 mod database;
 mod infrastructure;
+mod monitoring;
 mod payment;
 mod vcs;
 
@@ -32,6 +35,15 @@ pub fn all_patterns() -> HashMap<&'static str, Regex> {
         m.insert(name, regex);
     }
     for (name, regex) in infrastructure::patterns() {
+        m.insert(name, regex);
+    }
+    for (name, regex) in ai::patterns() {
+        m.insert(name, regex);
+    }
+    for (name, regex) in monitoring::patterns() {
+        m.insert(name, regex);
+    }
+    for (name, regex) in collaboration::patterns() {
         m.insert(name, regex);
     }
     m

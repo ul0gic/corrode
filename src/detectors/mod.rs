@@ -1,4 +1,5 @@
 pub mod ast;
+pub mod cve;
 pub mod dom;
 pub mod javascript;
 pub mod jwt;

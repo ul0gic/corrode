@@ -11,11 +11,19 @@ pub struct ScanResult {
     pub javascript: JavaScriptAnalysis,
     pub security: SecurityAnalysis,
     pub technologies: Vec<String>,
+    pub technology_versions: Vec<TechnologyVersion>,
     pub vulnerabilities: Vec<Vulnerability>,
     pub comments: Vec<Comment>,
     pub api_tests: Vec<ApiTestResult>,
     pub success: bool,
     pub error: Option<String>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct TechnologyVersion {
+    pub name: String,
+    pub version: Option<String>,
+    pub detection_method: String,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]

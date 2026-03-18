@@ -164,6 +164,21 @@ impl NetworkMonitor {
         let calls = self.api_calls.lock().await;
         calls.values().cloned().collect()
     }
+
+    /// Extract source map URLs from `SourceMap` or `X-SourceMap` response headers.
+    pub async fn get_source_map_headers(&self) -> Vec<String> {
+        let calls = self.api_calls.lock().await;
+        let mut source_maps = Vec::new();
+        for call in calls.values() {
+            if let Some(sm) = header_value(&call.response_headers, "SourceMap") {
+                source_maps.push(sm.to_owned());
+            }
+            if let Some(sm) = header_value(&call.response_headers, "X-SourceMap") {
+                source_maps.push(sm.to_owned());
+            }
+        }
+        source_maps
+    }
 }
 
 fn headers_to_map<T: serde::Serialize>(headers: &T) -> HashMap<String, String> {

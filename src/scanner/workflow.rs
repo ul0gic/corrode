@@ -10,6 +10,7 @@ use tokio::time;
 
 use crate::config::{Config, OutputFormat};
 use crate::detectors::{
+    cve,
     dom::{self, DomArtifacts},
     javascript::{self, ScriptArtifacts},
     secrets::SecretScanner,
@@ -22,7 +23,7 @@ use crate::scanner::page_utils;
 use crate::types::{DomAnalysis, JavaScriptAnalysis, NetworkAnalysis, ScanResult};
 use chromiumoxide::browser::{Browser, BrowserConfig};
 
-#[allow(clippy::too_many_lines)] // Will be split in Phase 1 restructuring
+#[allow(clippy::too_many_lines)]
 pub async fn run(config: Config) -> Result<()> {
     let Config {
         url,
@@ -181,7 +182,7 @@ pub async fn run(config: Config) -> Result<()> {
     Ok(())
 }
 
-#[allow(clippy::too_many_lines)] // Will be split in Phase 1 restructuring
+#[allow(clippy::too_many_lines)]
 async fn scan_url(
     url: String,
     browser: Arc<Browser>,
@@ -252,11 +253,12 @@ async fn scan_url(
 
     let ScriptArtifacts {
         script_count,
-        source_maps,
+        mut source_maps,
         window_objects,
         debug_flags,
         api_endpoints,
         technologies,
+        technology_versions,
         ast_findings,
         vulnerabilities: script_vulns,
     } = script_data;
@@ -267,6 +269,8 @@ async fn scan_url(
     let secret_count: usize = secrets.values().map(std::vec::Vec::len).sum();
 
     let all_calls = network_monitor.get_all_calls().await;
+    let header_source_maps = network_monitor.get_source_map_headers().await;
+    source_maps.extend(header_source_maps);
     let api_calls_list = network_monitor.get_api_calls().await;
 
     let api_call_urls: Vec<String> = api_calls_list.iter().map(|c| c.url.clone()).collect();
@@ -290,6 +294,10 @@ async fn scan_url(
 
     let (mut vulnerabilities, security) = analyze_security(&raw_cookies, &all_calls, &url);
     vulnerabilities.extend(script_vulns);
+
+    // Run version-dependent CVE checks against detected technology versions
+    let cve_vulns = cve::check_nextjs_cves(&technology_versions);
+    vulnerabilities.extend(cve_vulns);
 
     let result = ScanResult {
         url: url.clone(),
@@ -325,6 +333,7 @@ async fn scan_url(
         },
         security,
         technologies,
+        technology_versions,
         vulnerabilities,
         comments,
         api_tests: vec![],

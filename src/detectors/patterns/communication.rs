@@ -4,7 +4,7 @@
 
 use regex::Regex;
 
-/// Communication platform patterns: Slack, Discord, `SendGrid`, Twilio, Mailgun, Mailchimp.
+/// Communication platform patterns: Slack, Discord, `SendGrid`, Twilio, Mailgun, Mailchimp, Postmark.
 pub fn patterns() -> Vec<(&'static str, Regex)> {
     vec![
         (
@@ -34,6 +34,11 @@ pub fn patterns() -> Vec<(&'static str, Regex)> {
         (
             "mailchimp",
             Regex::new(r"[0-9a-f]{32}-us[0-9]{1,2}").unwrap(),
+        ),
+        // Postmark Server Token (UUID format + context)
+        (
+            "postmark_server_token",
+            Regex::new(r#"(?i)(?:postmark|X-Postmark-Server-Token|POSTMARK_SERVER_TOKEN)[\w.\-]{0,20}[\s'"]{0,3}(?:=|:|=>)[\s'"]{0,5}([a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12})\b"#).unwrap(),
         ),
     ]
 }

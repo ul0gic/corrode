@@ -31,6 +31,8 @@ pub fn patterns() -> Vec<(&'static str, Regex)> {
             "google_oauth",
             Regex::new(r"[0-9]+-[0-9A-Za-z_]{32}\.apps\.googleusercontent\.com").unwrap(),
         ),
+        // OpenAI API keys: sk- followed by alphanumeric only (no hyphens/underscores).
+        // This naturally excludes Anthropic keys (sk-ant-api03-...) which contain hyphens.
         (
             "openai_api_key",
             Regex::new(r"sk-[A-Za-z0-9]{32,}").unwrap(),
