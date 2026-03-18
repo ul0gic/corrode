@@ -14,10 +14,16 @@ pub struct NetworkMonitor {
     api_calls: Arc<Mutex<HashMap<String, ApiCall>>>,
 }
 
+impl Default for NetworkMonitor {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl NetworkMonitor {
     pub fn new() -> Self {
         Self {
-            api_calls: Arc::new(Mutex::new(HashMap::new())),
+            api_calls: Arc::default(),
         }
     }
 
@@ -28,109 +34,113 @@ impl NetworkMonitor {
     }
 
     pub async fn start_monitoring(&self, page: &Page) {
-        let api_calls = self.api_calls.clone();
+        let api_calls = Arc::clone(&self.api_calls);
 
-        // Listen for request events
-        let mut request_events = page
-            .event_listener::<EventRequestWillBeSent>()
-            .await
-            .unwrap();
-        let api_calls_req = api_calls.clone();
+        // Listen for request events — if event_listener fails, skip this monitor
+        let request_listener = page.event_listener::<EventRequestWillBeSent>().await;
+        if let Ok(mut request_events) = request_listener {
+            let api_calls_req = Arc::clone(&api_calls);
 
-        tokio::spawn(async move {
-            while let Some(event) = request_events.next().await {
-                let request = &event.request;
-                let request_id = event.request_id.inner().to_string();
+            tokio::spawn(async move {
+                while let Some(event) = request_events.next().await {
+                    let request = &event.request;
+                    let request_id = event.request_id.inner().clone();
 
-                // Only track HTTP(S) requests
-                if !request.url.starts_with("http") {
-                    continue;
+                    // Only track HTTP(S) requests
+                    if !request.url.starts_with("http") {
+                        continue;
+                    }
+
+                    let mut calls = api_calls_req.lock().await;
+                    let entry = calls.entry(request_id.clone()).or_insert(ApiCall {
+                        url: request.url.clone(),
+                        method: request.method.clone(),
+                        status: 0,
+                        request_headers: HashMap::new(),
+                        response_headers: HashMap::new(),
+                        response_content_type: None,
+                        request_body: request.post_data.clone(),
+                        response_body: None,
+                        response_size: 0,
+                    });
+
+                    entry.url.clone_from(&request.url);
+                    entry.method.clone_from(&request.method);
+                    entry.request_headers = headers_to_map(&request.headers);
+                    entry.request_body.clone_from(&request.post_data);
                 }
-
-                let mut calls = api_calls_req.lock().await;
-                let entry = calls.entry(request_id.clone()).or_insert(ApiCall {
-                    url: request.url.clone(),
-                    method: request.method.clone(),
-                    status: 0,
-                    request_headers: HashMap::new(),
-                    response_headers: HashMap::new(),
-                    response_content_type: None,
-                    request_body: request.post_data.clone(),
-                    response_body: None,
-                    response_size: 0,
-                });
-
-                entry.url = request.url.clone();
-                entry.method = request.method.clone();
-                entry.request_headers = headers_to_map(&request.headers);
-                entry.request_body = request.post_data.clone();
-            }
-        });
+            });
+        }
 
         // Listen for response events
-        let mut response_events = page
-            .event_listener::<EventResponseReceived>()
-            .await
-            .unwrap();
-        let api_calls_resp = api_calls.clone();
+        let response_listener = page.event_listener::<EventResponseReceived>().await;
+        if let Ok(mut response_events) = response_listener {
+            let api_calls_resp = Arc::clone(&api_calls);
 
-        tokio::spawn(async move {
-            while let Some(event) = response_events.next().await {
-                let request_id = event.request_id.inner().to_string();
-                let response = &event.response;
+            tokio::spawn(async move {
+                while let Some(event) = response_events.next().await {
+                    let request_id = event.request_id.inner().clone();
+                    let response = &event.response;
 
-                let mut calls = api_calls_resp.lock().await;
-                let entry = calls.entry(request_id).or_insert(ApiCall {
-                    url: response.url.clone(),
-                    method: String::new(),
-                    status: response.status as u16,
-                    request_headers: HashMap::new(),
-                    response_headers: HashMap::new(),
-                    response_content_type: None,
-                    request_body: None,
-                    response_body: None,
-                    response_size: 0,
-                });
+                    // Cast i64 status to u16; clamp to 0 on out-of-range (defensive)
+                    let status = u16::try_from(response.status).unwrap_or_default();
 
-                entry.status = response.status as u16;
-                if entry.url.is_empty() {
-                    entry.url = response.url.clone();
-                }
-                entry.response_headers = headers_to_map(&response.headers);
-                entry.response_content_type =
-                    header_value(&entry.response_headers, "content-type").map(|s| s.to_string());
-                if entry.request_headers.is_empty() {
-                    if let Some(req_headers) = &response.request_headers {
-                        entry.request_headers = headers_to_map(req_headers);
+                    let mut calls = api_calls_resp.lock().await;
+                    let entry = calls.entry(request_id).or_insert(ApiCall {
+                        url: response.url.clone(),
+                        method: String::new(),
+                        status,
+                        request_headers: HashMap::new(),
+                        response_headers: HashMap::new(),
+                        response_content_type: None,
+                        request_body: None,
+                        response_body: None,
+                        response_size: 0,
+                    });
+
+                    entry.status = status;
+                    if entry.url.is_empty() {
+                        entry.url.clone_from(&response.url);
+                    }
+                    entry.response_headers = headers_to_map(&response.headers);
+                    entry.response_content_type =
+                        header_value(&entry.response_headers, "content-type")
+                            .map(std::borrow::ToOwned::to_owned);
+                    if entry.request_headers.is_empty() {
+                        if let Some(req_headers) = &response.request_headers {
+                            entry.request_headers = headers_to_map(req_headers);
+                        }
                     }
                 }
-            }
-        });
+            });
+        }
 
         // Listen for loading finished to get response body
-        let mut finished_events = page.event_listener::<EventLoadingFinished>().await.unwrap();
-        let api_calls_fin = api_calls.clone();
-        let page_clone = page.clone();
+        let finished_listener = page.event_listener::<EventLoadingFinished>().await;
+        if let Ok(mut finished_events) = finished_listener {
+            let api_calls_fin = Arc::clone(&api_calls);
+            let page_clone = page.clone();
 
-        tokio::spawn(async move {
-            while let Some(event) = finished_events.next().await {
-                let request_id_str = event.request_id.inner().to_string();
+            tokio::spawn(async move {
+                while let Some(event) = finished_events.next().await {
+                    let request_id_str = event.request_id.inner().clone();
 
-                // Try to get response body
-                if let Ok(body_result) = page_clone
-                    .execute(GetResponseBodyParams {
-                        request_id: event.request_id.clone(),
-                    })
-                    .await
-                {
-                    let mut calls = api_calls_fin.lock().await;
-                    if let Some(call) = calls.get_mut(&request_id_str) {
-                        call.response_body = Some(body_result.body.clone());
-                        call.response_size = body_result.body.len();
+                    // Try to get response body
+                    if let Ok(body_result) = page_clone
+                        .execute(GetResponseBodyParams {
+                            request_id: event.request_id.clone(),
+                        })
+                        .await
+                    {
+                        let mut calls = api_calls_fin.lock().await;
+                        if let Some(call) = calls.get_mut(&request_id_str) {
+                            call.response_size = body_result.body.len();
+                            call.response_body = Some(body_result.body.clone());
+                        }
                     }
                 }
-            }
-        });
+            });
+        }
     }
 
     pub async fn get_api_calls(&self) -> Vec<ApiCall> {
@@ -175,7 +185,7 @@ fn value_to_string(v: Value) -> String {
         Value::String(s) => s,
         Value::Number(n) => n.to_string(),
         Value::Bool(b) => b.to_string(),
-        Value::Null => "null".to_string(),
+        Value::Null => "null".to_owned(),
         Value::Array(arr) => arr
             .into_iter()
             .map(value_to_string)

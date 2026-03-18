@@ -15,7 +15,7 @@ pub async fn extract_json<T: DeserializeOwned + Default>(page: &Page, script: &s
 pub async fn trigger_dynamic_content(page: &Page) {
     let _ = page
         .evaluate(
-            r#"
+            r"
             (async () => {
                 const scrollStep = 500;
                 const scrollDelay = 300;
@@ -26,7 +26,7 @@ pub async fn trigger_dynamic_content(page: &Page) {
                 window.scrollTo(0, 0);
                 await new Promise(resolve => setTimeout(resolve, 300));
             })()
-        "#,
+        ",
         )
         .await;
 

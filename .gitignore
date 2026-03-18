@@ -10,6 +10,10 @@
 site-list.md
 targets.txt
 
+# Claude Code configuration and project docs (local development only)
+.claude/
+.project/
+
 # IDE files
 .vscode/
 .idea/

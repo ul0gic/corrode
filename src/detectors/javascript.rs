@@ -1,10 +1,10 @@
 use anyhow::Result;
 use chromiumoxide::Page;
 use regex::Regex;
-use reqwest;
 use serde_json::Value;
 use std::collections::HashMap;
 use std::fs;
+use std::sync::LazyLock;
 use tokio::time::{self, Duration};
 use url::Url;
 
@@ -24,6 +24,7 @@ pub struct ScriptArtifacts {
     pub vulnerabilities: Vec<Vulnerability>,
 }
 
+#[allow(clippy::too_many_lines)] // Will be split in Phase 1 restructuring
 pub async fn collect(
     page: &Page,
     scanner: &SecretScanner,
@@ -49,21 +50,23 @@ pub async fn collect(
             scanner.extract_comments(content, "Inline Script").await;
             api_endpoints.extend(extract_api_endpoints(
                 content,
-                &format!("inline-script-{}", idx),
+                &format!("inline-script-{idx}"),
             ));
             if should_analyze_ast(None, target_host) {
                 ast_findings.extend(ast::analyze_script(
                     content,
-                    &format!("inline-script-{}", idx),
+                    &format!("inline-script-{idx}"),
                 ));
             }
-            vulnerabilities.extend(detect_rsc_vuln(content, &format!("inline-script-{}", idx)));
+            vulnerabilities.extend(detect_rsc_vuln(content, &format!("inline-script-{idx}")));
         }
 
         if let Some(src) = script.get("src").and_then(|v| v.as_str()) {
             if !src.is_empty() {
-                if src.ends_with(".map") || src.contains(".js.map") {
-                    source_maps.push(src.to_string());
+                let src_lower = src.to_ascii_lowercase();
+                #[allow(clippy::case_sensitive_file_extension_comparisons)]
+                if src_lower.ends_with(".map") || src_lower.contains(".js.map") {
+                    source_maps.push(src.to_owned());
                 }
 
                 let mut fetched = None;
@@ -91,13 +94,13 @@ pub async fn collect(
                 if let Some(text) = fetched {
                     let first_party = is_first_party_url(src, target_host);
                     if first_party {
-                        scanner.scan_text(&text, &format!("Script: {}", src)).await;
+                        scanner.scan_text(&text, &format!("Script: {src}")).await;
                         scanner
-                            .extract_comments(&text, &format!("Script: {}", src))
+                            .extract_comments(&text, &format!("Script: {src}"))
                             .await;
                         api_endpoints.extend(extract_api_endpoints(
                             &text,
-                            &format!("external-script-{}", idx),
+                            &format!("external-script-{idx}"),
                         ));
                         if should_analyze_ast(Some(src), target_host) {
                             ast_findings.extend(ast::analyze_script(&text, src));
@@ -111,7 +114,7 @@ pub async fn collect(
 
     let window_objects = page_utils::extract_json::<HashMap<String, String>>(
         page,
-        r#"
+        r"
         (() => {
             const results = {};
             const keys = ['__NEXT_DATA__', '__NUXT__', '__INITIAL_STATE__', 'env', 'ENV'];
@@ -126,11 +129,11 @@ pub async fn collect(
             });
             return results;
         })()
-    "#,
+    ",
     )
     .await;
 
-    let debug_mode = page_utils::extract_json::<Vec<String>>(page, r#"
+    let debug_mode = page_utils::extract_json::<Vec<String>>(page, r"
         (() => {
             const flags = [];
             if (window.__DEBUG__) flags.push('window.__DEBUG__');
@@ -139,11 +142,11 @@ pub async fn collect(
             if (window.__NEXT_DATA__ && window.__NEXT_DATA__.buildId?.includes('dev')) flags.push('Next.js dev buildId');
             return flags;
         })()
-    "#).await;
+    ").await;
 
     let technologies = page_utils::extract_json::<Vec<String>>(
         page,
-        r#"
+        r"
         (() => {
             const detected = [];
             const checks = [
@@ -169,7 +172,7 @@ pub async fn collect(
             });
             return detected;
         })()
-    "#,
+    ",
     )
     .await;
 
@@ -209,37 +212,40 @@ fn is_first_party_url(url: &str, target_host: Option<&str>) -> bool {
     if let Ok(parsed) = Url::parse(url) {
         if let Some(host) = parsed.host_str() {
             return host.eq_ignore_ascii_case(target)
-                || host.ends_with(&format!(".{}", target))
-                || target.ends_with(&format!(".{}", host));
+                || host.ends_with(&format!(".{target}"))
+                || target.ends_with(&format!(".{host}"));
         }
     }
 
     true
 }
 
+#[allow(clippy::unwrap_used)] // Regex literal is compile-time validated; cannot fail at runtime
+static RSC_VULN_REGEX: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(
+        r"(react-server-dom-(?:webpack|parcel|turbopack))[^0-9]{0,6}(19\.0(?:\.0)?|19\.1\.0|19\.1\.1|19\.2\.0)",
+    )
+    .unwrap()
+});
+
 fn detect_rsc_vuln(text: &str, source: &str) -> Vec<Vulnerability> {
     // Detect vulnerable react-server-dom-* versions (CVE-2025-55182)
     // Affected: 19.0, 19.1.0, 19.1.1, 19.2.0
     let mut vulns = Vec::new();
-    let re = Regex::new(
-        r"(react-server-dom-(?:webpack|parcel|turbopack))[^0-9]{0,6}(19\.0(?:\.0)?|19\.1\.0|19\.1\.1|19\.2\.0)",
-    )
-    .unwrap();
+    let re = &*RSC_VULN_REGEX;
 
     for cap in re.captures_iter(text) {
-        let pkg = cap.get(1).map(|m| m.as_str()).unwrap_or("react-server-dom");
-        let ver = cap.get(2).map(|m| m.as_str()).unwrap_or("unknown");
+        let pkg = cap.get(1).map_or("react-server-dom", |m| m.as_str());
+        let ver = cap.get(2).map_or("unknown", |m| m.as_str());
         let desc = format!(
-            "Vulnerable {} detected ({}). CVE-2025-55182 allows unauthenticated RCE in React Server Components/Functions.",
-            pkg, ver
+            "Vulnerable {pkg} detected ({ver}). CVE-2025-55182 allows unauthenticated RCE in React Server Components/Functions."
         );
         vulns.push(Vulnerability {
-            vuln_type: "React RSC RCE (CVE-2025-55182)".to_string(),
-            severity: "critical".to_string(),
+            vuln_type: "React RSC RCE (CVE-2025-55182)".to_owned(),
+            severity: "critical".to_owned(),
             description: desc,
-            remediation: "Upgrade react-server-dom-* to 19.0.1/19.1.2/19.2.1 or framework patched versions (Next.js 15.x/16.x etc.)."
-                .to_string(),
-            url: Some(source.to_string()),
+            remediation: "Upgrade react-server-dom-* to 19.0.1/19.1.2/19.2.1 or framework patched versions (Next.js 15.x/16.x etc.).".to_owned(),
+            url: Some(source.to_owned()),
         });
     }
 

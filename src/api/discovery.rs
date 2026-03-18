@@ -1,3 +1,8 @@
+// Regex::new() calls in lazy_static! use validated literal patterns that cannot fail at runtime.
+// non_std_lazy_statics: lazy_static used consistently; migration to LazyLock deferred to restructuring.
+#![allow(clippy::unwrap_used)]
+#![allow(clippy::non_std_lazy_statics)]
+
 use crate::types::DiscoveredEndpoint;
 use lazy_static::lazy_static;
 use regex::Regex;
@@ -8,7 +13,7 @@ lazy_static! {
     static ref API_PATTERNS: Vec<Regex> = vec![
         // fetch() calls
         Regex::new(r#"fetch\s*\(\s*[`'"]([^`'"]+)[`'"]"#).unwrap(),
-        Regex::new(r#"fetch\s*\(\s*`([^`]+)`"#).unwrap(),
+        Regex::new(r"fetch\s*\(\s*`([^`]+)`").unwrap(),
 
         // axios calls
         Regex::new(r#"axios\.(get|post|put|delete|patch)\s*\(\s*[`'"]([^`'"]+)[`'"]"#).unwrap(),
@@ -23,8 +28,8 @@ lazy_static! {
 
         // API base URLs and endpoints
         Regex::new(r#"[`'"]https?://[^`'"]+/api/[^`'"]+[`'"]"#).unwrap(),
-        Regex::new(r#"/api/[a-zA-Z0-9/_\-\{\}]+"#).unwrap(),
-        Regex::new(r#"/v\d+/[a-zA-Z0-9/_\-\{\}]+"#).unwrap(),
+        Regex::new(r"/api/[a-zA-Z0-9/_\-\{\}]+").unwrap(),
+        Regex::new(r"/v\d+/[a-zA-Z0-9/_\-\{\}]+").unwrap(),
 
         // GraphQL
         Regex::new(r#"[`'"]https?://[^`'"]+/graphql[`'"]"#).unwrap(),
@@ -36,9 +41,9 @@ lazy_static! {
 
     // Patterns to find URL parameters
     static ref PARAM_PATTERNS: Vec<Regex> = vec![
-        Regex::new(r#"\{(\w+)\}"#).unwrap(),
-        Regex::new(r#"\$\{(\w+)\}"#).unwrap(),
-        Regex::new(r#":(\w+)"#).unwrap(),
+        Regex::new(r"\{(\w+)\}").unwrap(),
+        Regex::new(r"\$\{(\w+)\}").unwrap(),
+        Regex::new(r":(\w+)").unwrap(),
     ];
 }
 
@@ -66,7 +71,7 @@ pub fn extract_api_endpoints(code: &str, source: &str) -> Vec<DiscoveredEndpoint
             if endpoints.contains(url) {
                 continue;
             }
-            endpoints.insert(url.to_string());
+            endpoints.insert(url.to_owned());
 
             // Extract HTTP method if present
             let method = if let Some(method_cap) = cap.get(0) {
@@ -91,15 +96,15 @@ pub fn extract_api_endpoints(code: &str, source: &str) -> Vec<DiscoveredEndpoint
             for param_pattern in PARAM_PATTERNS.iter() {
                 for param_cap in param_pattern.captures_iter(url) {
                     if let Some(param) = param_cap.get(1) {
-                        parameters.push(param.as_str().to_string());
+                        parameters.push(param.as_str().to_owned());
                     }
                 }
             }
 
             results.push(DiscoveredEndpoint {
-                url: url.to_string(),
-                method: method.to_string(),
-                source: source.to_string(),
+                url: url.to_owned(),
+                method: method.to_owned(),
+                source: source.to_owned(),
                 auth_required: None,
                 parameters,
             });

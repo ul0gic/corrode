@@ -1,0 +1,21 @@
+# Corrode Clippy Configuration
+# Security tooling demands maximum strictness
+
+# Function complexity limits
+too-many-lines-threshold = 100
+too-many-arguments-threshold = 6
+
+# Cognitive complexity (how hard a function is to understand)
+cognitive-complexity-threshold = 25
+
+# Type complexity
+type-complexity-threshold = 250
+
+# Maximum number of enum variants before clippy warns
+enum-variant-size-threshold = 200
+
+# Disallow certain types in public APIs
+disallowed-types = []
+
+# Disallow certain methods
+disallowed-methods = []

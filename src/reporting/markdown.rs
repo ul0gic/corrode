@@ -16,14 +16,16 @@ fn severity_rank(label: &str) -> u8 {
 
 fn wrap_value_chunks(value: &str, max: usize) -> Vec<String> {
     if max == 0 {
-        return vec![value.to_string()];
+        return vec![value.to_owned()];
     }
     let bytes = value.as_bytes();
     let mut out = Vec::new();
     let mut start = 0;
     while start < bytes.len() {
         let end = (start + max).min(bytes.len());
-        out.push(String::from_utf8_lossy(&bytes[start..end]).to_string());
+        if let Some(slice) = bytes.get(start..end) {
+            out.push(String::from_utf8_lossy(slice).to_string());
+        }
         start = end;
     }
     out
@@ -32,20 +34,20 @@ fn wrap_value_chunks(value: &str, max: usize) -> Vec<String> {
 fn wrap_entry(label: &str, value: &str, max_line: usize) -> Vec<String> {
     let mut lines = Vec::new();
     let first_room = max_line.saturating_sub(label.len() + 2).max(8); // reserve space for value on first line
-    let mut remaining = value.to_string();
+    let mut remaining = value.to_owned();
 
-    if !remaining.is_empty() {
+    if remaining.is_empty() {
+        lines.push(format!("{label}:"));
+    } else {
         let chunks = wrap_value_chunks(&remaining, first_room);
         if let Some((first, rest)) = chunks.split_first() {
             lines.push(format!("{label}: {first}"));
-            if !rest.is_empty() {
-                remaining = rest.join("");
-            } else {
+            if rest.is_empty() {
                 remaining.clear();
+            } else {
+                remaining = rest.join("");
             }
         }
-    } else {
-        lines.push(format!("{label}:"));
     }
 
     let cont_room = max_line.saturating_sub(2).max(8);
@@ -64,7 +66,7 @@ fn wrap_entry(label: &str, value: &str, max_line: usize) -> Vec<String> {
 
 fn truncate_middle(value: &str, max_len: usize) -> String {
     if value.len() <= max_len || max_len < 8 {
-        return value.to_string();
+        return value.to_owned();
     }
     let head = max_len / 2 - 2;
     let tail = max_len - head - 3;
@@ -85,12 +87,13 @@ fn header_hints(headers: &std::collections::HashMap<String, String>) -> String {
         }
     }
     if hits.is_empty() {
-        "-".to_string()
+        "-".to_owned()
     } else {
         hits.join(", ")
     }
 }
 
+#[allow(clippy::case_sensitive_file_extension_comparisons)]
 fn is_api_like(url: &str) -> bool {
     url.contains("/api/")
         || url.contains("/graphql")
@@ -102,25 +105,25 @@ fn is_api_like(url: &str) -> bool {
 
 fn format_calls_table(calls: &[ApiCall]) -> Vec<String> {
     let mut lines = Vec::new();
-    lines.push("```".to_string());
+    lines.push("```".to_owned());
     lines.push(format!(
         "{:<6} {:<6} {:<18} {:<60} {}",
         "METHOD", "CODE", "CT", "URL", "AUTH"
     ));
     for call in calls {
         let method = if call.method.is_empty() {
-            "GET".to_string()
+            "GET".to_owned()
         } else {
             call.method.clone()
         };
         let status = if call.status == 0 {
-            "-".to_string()
+            "-".to_owned()
         } else {
             call.status.to_string()
         };
         let url = truncate_middle(&call.url, 60);
         let hints = header_hints(&call.request_headers);
-        let ct = content_type_for_call(call).unwrap_or("-".to_string());
+        let ct = content_type_for_call(call).unwrap_or("-".to_owned());
         lines.push(format!(
             "{:<6} {:<6} {:<18} {:<60} {}",
             method,
@@ -130,7 +133,7 @@ fn format_calls_table(calls: &[ApiCall]) -> Vec<String> {
             hints
         ));
     }
-    lines.push("```".to_string());
+    lines.push("```".to_owned());
     lines
 }
 
@@ -140,7 +143,7 @@ fn content_type_for_call(call: &ApiCall) -> Option<String> {
     }
     header_value(&call.response_headers, "content-type")
         .or_else(|| header_value(&call.request_headers, "content-type"))
-        .map(|s| s.to_string())
+        .map(std::borrow::ToOwned::to_owned)
 }
 
 fn header_value<'a>(
@@ -153,15 +156,16 @@ fn header_value<'a>(
         .map(|(_, v)| v.as_str())
 }
 
+#[allow(clippy::too_many_lines)] // Will be split in Phase 1 restructuring
 pub fn write(result: &ScanResult, base_output_dir: &Path) -> Result<()> {
     let mut report = Vec::new();
 
-    report.push("# 🦀 Corrode Security Scan Report\n".to_string());
+    report.push("# 🦀 Corrode Security Scan Report\n".to_owned());
     report.push(format!("**Target**: {}", result.url));
     report.push(format!("**Scan Date**: {}", result.timestamp));
-    report.push("**Scanner**: Corrode v0.1.0\n".to_string());
+    report.push("**Scanner**: Corrode v0.1.0\n".to_owned());
 
-    report.push("---\n## Executive Summary\n".to_string());
+    report.push("---\n## Executive Summary\n".to_owned());
 
     let critical_vulns = result
         .vulnerabilities
@@ -203,12 +207,12 @@ pub fn write(result: &ScanResult, base_output_dir: &Path) -> Result<()> {
         _ => "🟢 LOW",
     };
 
-    report.push(format!("**Risk Level**: {}\n", risk_level));
-    report.push(format!("- Critical Vulnerabilities: {}", critical_vulns));
-    report.push(format!("- High Vulnerabilities: {}", high_vulns));
-    report.push(format!("- Medium Vulnerabilities: {}", medium_vulns));
-    report.push(format!("- Low Vulnerabilities: {}", low_vulns));
-    report.push(format!("- Secret Types Found: {}", secret_count));
+    report.push(format!("**Risk Level**: {risk_level}\n"));
+    report.push(format!("- Critical Vulnerabilities: {critical_vulns}"));
+    report.push(format!("- High Vulnerabilities: {high_vulns}"));
+    report.push(format!("- Medium Vulnerabilities: {medium_vulns}"));
+    report.push(format!("- Low Vulnerabilities: {low_vulns}"));
+    report.push(format!("- Secret Types Found: {secret_count}"));
     report.push(format!(
         "- Technologies Detected: {}\n",
         result.technologies.len()
@@ -230,13 +234,13 @@ pub fn write(result: &ScanResult, base_output_dir: &Path) -> Result<()> {
     if !key_lines.is_empty() {
         let content_width = key_lines
             .iter()
-            .map(|l| l.len())
+            .map(std::string::String::len)
             .max()
             .unwrap_or(20)
             .max(20)
             .min(max_line_width);
         let border = format!("+{}+", "-".repeat(content_width + 2));
-        report.push("```\n".to_string());
+        report.push("```\n".to_owned());
         report.push(border.clone());
         let title = "Keys Identified";
         let title_pad = content_width.saturating_sub(title.len());
@@ -247,18 +251,18 @@ pub fn write(result: &ScanResult, base_output_dir: &Path) -> Result<()> {
             report.push(format!("| {}{} |", line, " ".repeat(pad)));
         }
         report.push(border);
-        report.push("```\n".to_string());
+        report.push("```\n".to_owned());
     }
 
     if !result.secrets.is_empty() {
-        report.push("---\n## 🔑 Secrets & Credentials Found\n".to_string());
+        report.push("---\n## 🔑 Secrets & Credentials Found\n".to_owned());
         report.push(
-            "⚠️ **CRITICAL**: The following secrets were exposed in the application\n".to_string(),
+            "⚠️ **CRITICAL**: The following secrets were exposed in the application\n".to_owned(),
         );
 
         for (secret_type, findings) in &result.secrets {
             let total_matches: usize = findings.iter().map(|f| f.matches.len()).sum();
-            report.push(format!("### {} ({} matches)", secret_type, total_matches));
+            report.push(format!("### {secret_type} ({total_matches} matches)"));
 
             for finding in findings {
                 report.push(format!("**Source**: {}", finding.source));
@@ -269,7 +273,7 @@ pub fn write(result: &ScanResult, base_output_dir: &Path) -> Result<()> {
                     } else {
                         m.clone()
                     };
-                    report.push(format!("- `{}`", display));
+                    report.push(format!("- `{display}`"));
                 }
                 report.push(String::new());
             }
@@ -277,7 +281,7 @@ pub fn write(result: &ScanResult, base_output_dir: &Path) -> Result<()> {
     }
 
     if result.network.total_requests > 0 || !result.network.calls.is_empty() {
-        report.push("---\n## 🌐 Network Activity\n".to_string());
+        report.push("---\n## 🌐 Network Activity\n".to_owned());
         report.push(format!(
             "- Total Requests: {}",
             result.network.total_requests
@@ -305,14 +309,14 @@ pub fn write(result: &ScanResult, base_output_dir: &Path) -> Result<()> {
         }
 
         if !calls.is_empty() {
-            report.push("Key Requests (method, status, auth hints):".to_string());
+            report.push("Key Requests (method, status, auth hints):".to_owned());
             report.extend(format_calls_table(&calls));
             report.push(String::new());
         }
     }
 
     if !result.vulnerabilities.is_empty() {
-        report.push("---\n## 🚨 Vulnerabilities\n".to_string());
+        report.push("---\n## 🚨 Vulnerabilities\n".to_owned());
 
         for severity in &["critical", "high", "medium", "low"] {
             let vulns: Vec<&Vulnerability> = result
@@ -339,7 +343,7 @@ pub fn write(result: &ScanResult, base_output_dir: &Path) -> Result<()> {
                     report.push(format!("#### {}. {}", i + 1, vuln.vuln_type));
                     report.push(format!("**Description**: {}", vuln.description));
                     if let Some(url) = &vuln.url {
-                        report.push(format!("**URL**: `{}`", url));
+                        report.push(format!("**URL**: `{url}`"));
                     }
                     report.push(format!("**Remediation**: {}\n", vuln.remediation));
                 }
@@ -348,7 +352,7 @@ pub fn write(result: &ScanResult, base_output_dir: &Path) -> Result<()> {
     }
 
     if !result.api_tests.is_empty() {
-        report.push("---\n## 🎯 API Security Tests\n".to_string());
+        report.push("---\n## 🎯 API Security Tests\n".to_owned());
 
         let critical_api = result
             .api_tests
@@ -372,7 +376,7 @@ pub fn write(result: &ScanResult, base_output_dir: &Path) -> Result<()> {
         ));
 
         if critical_api > 0 {
-            report.push(format!("### 🔴 CRITICAL Issues ({})\n", critical_api));
+            report.push(format!("### 🔴 CRITICAL Issues ({critical_api})\n"));
             for test in result
                 .api_tests
                 .iter()
@@ -383,7 +387,7 @@ pub fn write(result: &ScanResult, base_output_dir: &Path) -> Result<()> {
         }
 
         if high_api > 0 {
-            report.push(format!("### 🟠 HIGH Issues ({})\n", high_api));
+            report.push(format!("### 🟠 HIGH Issues ({high_api})\n"));
             for test in result
                 .api_tests
                 .iter()
@@ -394,7 +398,7 @@ pub fn write(result: &ScanResult, base_output_dir: &Path) -> Result<()> {
         }
 
         if medium_api > 0 {
-            report.push(format!("### 🟡 MEDIUM Issues ({})\n", medium_api));
+            report.push(format!("### 🟡 MEDIUM Issues ({medium_api})\n"));
             for test in result
                 .api_tests
                 .iter()
@@ -406,7 +410,7 @@ pub fn write(result: &ScanResult, base_output_dir: &Path) -> Result<()> {
     }
 
     if !result.javascript.ast_findings.is_empty() {
-        report.push("---\n## 🧠 JavaScript AST Findings\n".to_string());
+        report.push("---\n## 🧠 JavaScript AST Findings\n".to_owned());
         for finding in &result.javascript.ast_findings {
             report.push(format!("### {} @ {}", finding.kind, finding.location));
             report.push(format!("**Value**: `{}`", finding.value));
@@ -414,7 +418,7 @@ pub fn write(result: &ScanResult, base_output_dir: &Path) -> Result<()> {
         }
     }
 
-    report.push("---\n## 📡 Network Insights\n".to_string());
+    report.push("---\n## 📡 Network Insights\n".to_owned());
     report.push(format!(
         "- Total Requests: {}",
         result.network.total_requests
@@ -429,13 +433,13 @@ pub fn write(result: &ScanResult, base_output_dir: &Path) -> Result<()> {
     ));
 
     if !result.javascript.source_maps.is_empty() {
-        report.push("---\n## 🗺 Source Maps\n".to_string());
+        report.push("---\n## 🗺 Source Maps\n".to_owned());
         for map in &result.javascript.source_maps {
-            report.push(format!("- {}", map));
+            report.push(format!("- {map}"));
         }
     }
 
-    report.push("---\n## 🧾 DOM Insights\n".to_string());
+    report.push("---\n## 🧾 DOM Insights\n".to_owned());
     report.push(format!("- Scripts: {}", result.dom.scripts));
     report.push(format!("- Forms: {}", result.dom.forms.len()));
     report.push(format!(
@@ -445,7 +449,7 @@ pub fn write(result: &ScanResult, base_output_dir: &Path) -> Result<()> {
     report.push(format!("- iframes: {}", result.dom.iframes.len()));
 
     if !result.dom.data_attributes.is_empty() {
-        report.push("### Data Attributes\n".to_string());
+        report.push("### Data Attributes\n".to_owned());
         for attr in &result.dom.data_attributes {
             report.push(format!(
                 "- {}: {}",
@@ -456,25 +460,25 @@ pub fn write(result: &ScanResult, base_output_dir: &Path) -> Result<()> {
     }
 
     if !result.technologies.is_empty() {
-        report.push("---\n## 🛠️ Technology Stack\n".to_string());
+        report.push("---\n## 🛠️ Technology Stack\n".to_owned());
         for tech in &result.technologies {
-            report.push(format!("- {}", tech));
+            report.push(format!("- {tech}"));
         }
         report.push(String::new());
     }
 
-    report.push("---\n## 💡 Recommendations\n".to_string());
-    report.push("1. **Immediately rotate** any exposed secrets and credentials".to_string());
-    report.push("2. Remove or restrict access to source maps in production".to_string());
-    report.push("3. Implement proper security headers (CSP, HSTS, etc.)".to_string());
-    report.push("4. Review and fix all HIGH and CRITICAL vulnerabilities".to_string());
-    report.push("5. Disable debug mode in production".to_string());
-    report.push("6. Use HttpOnly, Secure, and SameSite flags on cookies\n".to_string());
+    report.push("---\n## 💡 Recommendations\n".to_owned());
+    report.push("1. **Immediately rotate** any exposed secrets and credentials".to_owned());
+    report.push("2. Remove or restrict access to source maps in production".to_owned());
+    report.push("3. Implement proper security headers (CSP, HSTS, etc.)".to_owned());
+    report.push("4. Review and fix all HIGH and CRITICAL vulnerabilities".to_owned());
+    report.push("5. Disable debug mode in production".to_owned());
+    report.push("6. Use HttpOnly, Secure, and SameSite flags on cookies\n".to_owned());
 
     let domain = url::Url::parse(&result.url)
         .ok()
-        .and_then(|u| u.host_str().map(|s| s.to_string()))
-        .unwrap_or_else(|| "unknown".to_string())
+        .and_then(|u| u.host_str().map(std::borrow::ToOwned::to_owned))
+        .unwrap_or_else(|| "unknown".to_owned())
         .replace('.', "-");
 
     let site_dir = base_output_dir.join(&domain);

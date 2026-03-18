@@ -1,3 +1,8 @@
+// Regex::new() calls in lazy_static! use validated literal patterns that cannot fail at runtime.
+// non_std_lazy_statics: lazy_static used consistently; migration to LazyLock deferred to restructuring.
+#![allow(clippy::unwrap_used)]
+#![allow(clippy::non_std_lazy_statics)]
+
 use base64::{engine::general_purpose, Engine as _};
 use lazy_static::lazy_static;
 use regex::Regex;
@@ -153,9 +158,12 @@ fn jwt_has_role(jwt: &str, role: &str) -> bool {
         return false;
     }
 
-    if let Ok(decoded) = general_purpose::URL_SAFE_NO_PAD.decode(parts[1]) {
+    let Some(payload_part) = parts.get(1) else {
+        return false;
+    };
+    if let Ok(decoded) = general_purpose::URL_SAFE_NO_PAD.decode(payload_part) {
         if let Ok(payload) = String::from_utf8(decoded) {
-            let role_marker = format!(r#""role":"{}""#, role);
+            let role_marker = format!(r#""role":"{role}""#);
             return payload.contains(role_marker.as_str());
         }
     }
@@ -191,7 +199,7 @@ impl SecretScanner {
         for (pattern_name, regex) in SECRET_PATTERNS.iter() {
             let matches: HashSet<String> = regex
                 .find_iter(text)
-                .map(|m| m.as_str().to_string())
+                .map(|m| m.as_str().to_owned())
                 .collect();
 
             if !matches.is_empty() {
@@ -217,20 +225,20 @@ impl SecretScanner {
 
                     if !service_role_jwts.is_empty() {
                         findings
-                            .entry("supabase_service_role".to_string())
+                            .entry("supabase_service_role".to_owned())
                             .or_insert_with(Vec::new)
                             .push(SecretFinding {
-                                source: source.to_string(),
+                                source: source.to_owned(),
                                 matches: service_role_jwts,
                             });
                     }
 
                     if !anon_jwts.is_empty() {
                         findings
-                            .entry("supabase_anon_jwt".to_string())
+                            .entry("supabase_anon_jwt".to_owned())
                             .or_insert_with(Vec::new)
                             .push(SecretFinding {
-                                source: source.to_string(),
+                                source: source.to_owned(),
                                 matches: anon_jwts,
                             });
                     }
@@ -238,10 +246,10 @@ impl SecretScanner {
                     // Only add uncategorized JWTs to generic "jwt" bucket
                     if !other_jwts.is_empty() {
                         findings
-                            .entry("jwt".to_string())
+                            .entry("jwt".to_owned())
                             .or_insert_with(Vec::new)
                             .push(SecretFinding {
-                                source: source.to_string(),
+                                source: source.to_owned(),
                                 matches: other_jwts,
                             });
                     }
@@ -249,10 +257,10 @@ impl SecretScanner {
                 }
 
                 findings
-                    .entry((*pattern_name).to_string())
+                    .entry((*pattern_name).to_owned())
                     .or_insert_with(Vec::new)
                     .push(SecretFinding {
-                        source: source.to_string(),
+                        source: source.to_owned(),
                         matches: matches_vec,
                     });
             }
@@ -271,8 +279,8 @@ impl SecretScanner {
                 let content = comment.as_str().trim();
                 if content.len() > 5 {
                     comments.push(Comment {
-                        source: source.to_string(),
-                        comment_type: "single".to_string(),
+                        source: source.to_owned(),
+                        comment_type: "single".to_owned(),
                         content: content.chars().take(200).collect(),
                     });
                 }
@@ -284,8 +292,8 @@ impl SecretScanner {
                 let content = comment.as_str().trim();
                 if content.len() > 5 {
                     comments.push(Comment {
-                        source: source.to_string(),
-                        comment_type: "multi".to_string(),
+                        source: source.to_owned(),
+                        comment_type: "multi".to_owned(),
                         content: content.chars().take(500).collect(),
                     });
                 }

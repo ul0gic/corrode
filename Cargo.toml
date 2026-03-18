@@ -35,3 +35,39 @@ swc_common = "17.0.1"
 swc_ecma_ast = "18.0.0"
 swc_ecma_parser = { version = "27.0.6", features = ["typescript"] }
 swc_ecma_visit = "18.0.1"
+
+[lints.clippy]
+# === DENY (hard errors) ===
+# Security-critical: no panics in production
+unwrap_used = "deny"
+expect_used = "deny"
+panic = "deny"
+# No indexing (use .get() to avoid panics)
+indexing_slicing = "deny"
+
+# === WARN (pedantic quality) ===
+pedantic = { level = "warn", priority = -1 }
+# Selective pedantic overrides (allow these specific pedantic lints)
+module_name_repetitions = "allow"
+must_use_candidate = "allow"
+missing_errors_doc = "allow"
+missing_panics_doc = "allow"
+struct_field_names = "allow"
+
+# === Additional strictness ===
+# Clone discipline
+clone_on_ref_ptr = "warn"
+# String discipline
+str_to_string = "warn"
+# Error handling
+result_large_err = "warn"
+# Redundancy
+redundant_closure_for_method_calls = "warn"
+# Correctness
+cast_possible_truncation = "warn"
+cast_sign_loss = "warn"
+cast_possible_wrap = "warn"
+
+[lints.rust]
+# Deny unsafe across the entire crate
+unsafe_code = "deny"

@@ -1,6 +1,7 @@
 use std::collections::HashSet;
+use std::sync::{Arc, LazyLock};
 
-use regex::Regex;
+use regex::Regex; // used by LazyLock statics
 use swc_common::{BytePos, FileName, SourceMap, Span, Spanned, DUMMY_SP};
 use swc_ecma_ast::EsVersion;
 use swc_ecma_ast::{
@@ -16,6 +17,18 @@ use swc_ecma_parser::{EsSyntax, TsSyntax};
 use swc_ecma_visit::{Visit, VisitWith};
 
 use crate::types::AstFinding;
+
+// Static regex patterns compiled once at first use
+#[allow(clippy::unwrap_used)] // Regex literals are compile-time validated; these cannot fail at runtime
+static URL_REGEX: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r#"https?://[^\s"']{6,}"#).unwrap());
+#[allow(clippy::unwrap_used)] // Regex literals are compile-time validated; these cannot fail at runtime
+static CREDENTIAL_HINT_REGEX: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r"(?i)(api[_-]?key|token|secret|bearer|client[_-]?secret|auth)").unwrap()
+});
+#[allow(clippy::unwrap_used)] // Regex literals are compile-time validated; these cannot fail at runtime
+static JWT_REGEX: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"eyJ[A-Za-z0-9_\-]+\.[A-Za-z0-9_\-]+\.[A-Za-z0-9_\-]+").unwrap());
 
 const MAX_SCRIPT_BYTES: usize = 500_000;
 
@@ -34,10 +47,10 @@ pub fn analyze_script(source: &str, origin: &str) -> Vec<AstFinding> {
 }
 
 fn parse_module(source: &str, origin: &str) -> Option<(Module, std::sync::Arc<SourceMap>)> {
-    let cm: std::sync::Arc<SourceMap> = Default::default();
+    let cm: std::sync::Arc<SourceMap> = Arc::default();
     let fm = cm.new_source_file(
-        FileName::Custom(origin.to_string()).into(),
-        source.to_string(),
+        FileName::Custom(origin.to_owned()).into(),
+        source.to_owned(),
     );
 
     let syntaxes = vec![
@@ -66,7 +79,7 @@ fn parse_module(source: &str, origin: &str) -> Option<(Module, std::sync::Arc<So
         let lexer = Lexer::new(syntax, EsVersion::Es2022, StringInput::from(&*fm), None);
         let mut parser = Parser::new_from(lexer);
         if let Ok(module) = parser.parse_module() {
-            return Some((module, cm.clone()));
+            return Some((module, Arc::clone(&cm)));
         }
     }
 
@@ -78,40 +91,31 @@ struct AstAnalyzer {
     findings: Vec<AstFinding>,
     seen: HashSet<String>,
     cm: std::sync::Arc<SourceMap>,
-    url_regex: Regex,
-    credential_hint_regex: Regex,
-    jwt_regex: Regex,
 }
 
 impl AstAnalyzer {
     fn new(source_name: &str, cm: std::sync::Arc<SourceMap>) -> Self {
         Self {
-            source_name: source_name.to_string(),
+            source_name: source_name.to_owned(),
             findings: Vec::new(),
             seen: HashSet::new(),
             cm,
-            url_regex: Regex::new(r#"https?://[^\s"']{6,}"#).unwrap(),
-            credential_hint_regex: Regex::new(
-                r"(?i)(api[_-]?key|token|secret|bearer|client[_-]?secret|auth)",
-            )
-            .unwrap(),
-            jwt_regex: Regex::new(r"eyJ[A-Za-z0-9_\-]+\.[A-Za-z0-9_\-]+\.[A-Za-z0-9_\-]+").unwrap(),
         }
     }
 
-    fn record(&mut self, kind: &str, value: String, span: Span, context: String) {
+    fn record(&mut self, kind: &str, value: &str, span: Span, context: &str) {
         let loc = self.cm.lookup_char_pos(match span {
             Span { lo, .. } if lo != BytePos(0) => lo,
             _ => DUMMY_SP.lo(),
         });
         let location = format!("{}:{}:{}", self.source_name, loc.line, loc.col_display + 1);
-        let signature = format!("{}|{}|{}", kind, value, location);
+        let signature = format!("{kind}|{value}|{location}");
         if self.seen.insert(signature) {
             self.findings.push(AstFinding {
-                kind: kind.to_string(),
-                value: truncate(&value),
+                kind: kind.to_owned(),
+                value: truncate(value),
                 location,
-                context,
+                context: context.to_owned(),
             });
         }
     }
@@ -123,8 +127,8 @@ impl AstAnalyzer {
                     if let Some(key) = prop_name(&kv.key) {
                         if key == "url" || key.contains("endpoint") {
                             if let Some(url) = string_from_expr(&kv.value) {
-                                if self.url_regex.is_match(&url) {
-                                    self.record("endpoint", url, span, context.to_string());
+                                if URL_REGEX.is_match(&url) {
+                                    self.record("endpoint", &url, span, context);
                                 }
                             }
                         }
@@ -140,7 +144,7 @@ impl AstAnalyzer {
                 Expr::Ident(ident) if ident.sym.as_ref() == "fetch" => (
                     "endpoint",
                     call.args.first().map(|a| a.expr.as_ref()),
-                    "fetch() call".to_string(),
+                    "fetch() call".to_owned(),
                 ),
                 Expr::Member(member) => {
                     let method = member_prop_name(&member.prop);
@@ -149,12 +153,12 @@ impl AstAnalyzer {
                         (Some("axios"), Some(method)) => (
                             "endpoint",
                             call.args.first().map(|a| a.expr.as_ref()),
-                            format!("axios.{}()", method),
+                            format!("axios.{method}()"),
                         ),
-                        (Some("$"), Some("ajax")) | (Some("jQuery"), Some("ajax")) => (
+                        (Some("$" | "jQuery"), Some("ajax")) => (
                             "endpoint",
                             call.args.first().map(|a| a.expr.as_ref()),
-                            "ajax() call".to_string(),
+                            "ajax() call".to_owned(),
                         ),
                         _ => ("", None, String::new()),
                     }
@@ -170,8 +174,8 @@ impl AstAnalyzer {
 
         if let Some(target_expr) = maybe_target {
             if let Some(url) = string_from_expr(target_expr) {
-                if self.url_regex.is_match(&url) {
-                    self.record(kind, url, call.span, context_hint);
+                if URL_REGEX.is_match(&url) {
+                    self.record(kind, &url, call.span, &context_hint);
                     return;
                 }
             }
@@ -187,39 +191,35 @@ impl AstAnalyzer {
             return;
         };
         if let Some(value) = string_from_expr(&kv.value) {
-            if !self.is_sensitive_literal(&key, &value) {
+            if !Self::is_sensitive_literal(&key, &value) {
                 return;
             }
 
-            let context = if self.url_regex.is_match(&value) {
+            let context = if URL_REGEX.is_match(&value) {
                 "object url literal"
             } else {
                 "credential-like literal"
             };
-            let kind = if self.jwt_regex.is_match(&value) {
+            let kind = if JWT_REGEX.is_match(&value) {
                 "jwt_literal"
-            } else if self.url_regex.is_match(&value) {
+            } else if URL_REGEX.is_match(&value) {
                 "endpoint_literal"
             } else {
                 "literal"
             };
 
-            self.record(
-                kind,
-                format!("{} = {}", key, value),
-                kv.value.span(),
-                context.to_string(),
-            );
+            let formatted = format!("{key} = {value}");
+            self.record(kind, &formatted, kv.value.span(), context);
         }
     }
 
-    fn is_sensitive_literal(&self, key: &str, value: &str) -> bool {
+    fn is_sensitive_literal(key: &str, value: &str) -> bool {
         let key_l = key.to_lowercase();
         let val_l = value.to_lowercase();
         if val_l.contains("pixel code is not installed correctly") {
             return false;
         }
-        let key_hint = self.credential_hint_regex.is_match(key)
+        let key_hint = CREDENTIAL_HINT_REGEX.is_match(key)
             || key_l.contains("supabase")
             || key_l.contains("stripe")
             || key_l.contains("openai")
@@ -227,8 +227,8 @@ impl AstAnalyzer {
             || key_l.contains("cloudflare")
             || key_l.contains("service_role")
             || key_l.contains("service-role");
-        let looks_jwt = self.jwt_regex.is_match(value);
-        let looks_url = self.url_regex.is_match(value);
+        let looks_jwt = JWT_REGEX.is_match(value);
+        let looks_url = URL_REGEX.is_match(value);
         let looks_keyish =
             value.starts_with("pk_") || value.starts_with("sk_") || value.starts_with("nfp_");
         let long_secret = value.len() > 80;
@@ -287,7 +287,7 @@ fn member_prop_name(prop: &MemberProp) -> Option<String> {
     match prop {
         MemberProp::Ident(ident) => Some(ident.sym.to_string()),
         MemberProp::PrivateName(name) => Some(name.name.to_string()),
-        MemberProp::Computed(comp) => string_from_expr(&comp.expr).map(|s| s.to_string()),
+        MemberProp::Computed(comp) => string_from_expr(&comp.expr),
     }
 }
 
@@ -306,22 +306,18 @@ impl AstAnalyzer {
             return;
         };
         if let Some(value) = string_from_expr(init) {
-            if !self.is_sensitive_literal(&name, &value) {
+            if !Self::is_sensitive_literal(&name, &value) {
                 return;
             }
-            let kind = if self.jwt_regex.is_match(&value) {
+            let kind = if JWT_REGEX.is_match(&value) {
                 "jwt_literal"
-            } else if self.url_regex.is_match(&value) {
+            } else if URL_REGEX.is_match(&value) {
                 "endpoint_literal"
             } else {
                 "literal"
             };
-            self.record(
-                kind,
-                format!("{} = {}", name, value),
-                init.span(),
-                "var literal".into(),
-            );
+            let formatted = format!("{name} = {value}");
+            self.record(kind, &formatted, init.span(), "var literal");
         }
     }
 }
@@ -334,10 +330,12 @@ fn pat_name(pat: &Pat) -> Option<String> {
 }
 
 fn truncate(value: &str) -> String {
-    const MAX_LEN: usize = 180;
-    if value.len() > MAX_LEN {
-        format!("{}...", &value[..MAX_LEN])
+    const MAX_CHARS: usize = 180;
+    let char_count = value.chars().count();
+    if char_count > MAX_CHARS {
+        let head: String = value.chars().take(MAX_CHARS).collect();
+        format!("{head}...")
     } else {
-        value.to_string()
+        value.to_owned()
     }
 }

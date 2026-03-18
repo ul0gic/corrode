@@ -23,6 +23,7 @@ use crate::types::{
 };
 use chromiumoxide::browser::{Browser, BrowserConfig};
 
+#[allow(clippy::too_many_lines)] // Will be split in Phase 1 restructuring
 pub async fn run(config: Config) -> Result<()> {
     let Config {
         url,
@@ -60,21 +61,13 @@ pub async fn run(config: Config) -> Result<()> {
                 "--disable-sync",
             ])
             .build()
-            .map_err(|e| anyhow::anyhow!("Failed to build browser config: {}", e))?,
+            .map_err(|e| anyhow::anyhow!("Failed to build browser config: {e}"))?,
     )
     .await?;
 
     let browser = Arc::new(browser);
 
-    tokio::spawn(async move {
-        loop {
-            match handler.next().await {
-                Some(Ok(_)) => continue,
-                Some(Err(_)) => continue,
-                None => break,
-            }
-        }
-    });
+    tokio::spawn(async move { while let Some(_event) = handler.next().await {} });
 
     time::sleep(Duration::from_millis(500)).await;
 
@@ -99,7 +92,7 @@ pub async fn run(config: Config) -> Result<()> {
     .await
     {
         Ok(result) => {
-            let secrets_count: usize = result.secrets.values().map(|v| v.len()).sum();
+            let secrets_count: usize = result.secrets.values().map(std::vec::Vec::len).sum();
             let vulns_count = result.vulnerabilities.len();
             let comments_count = result.comments.len();
             total_secrets += secrets_count;
@@ -108,8 +101,8 @@ pub async fn run(config: Config) -> Result<()> {
 
             let domain = url::Url::parse(&result.url)
                 .ok()
-                .and_then(|u| u.host_str().map(|s| s.to_string()))
-                .unwrap_or_else(|| "unknown".to_string())
+                .and_then(|u| u.host_str().map(std::borrow::ToOwned::to_owned))
+                .unwrap_or_else(|| "unknown".to_owned())
                 .replace('.', "-");
 
             let site_dir = output_root.as_ref().join(&domain);
@@ -273,6 +266,7 @@ fn known_locations() -> Vec<PathBuf> {
     paths
 }
 
+#[allow(clippy::too_many_lines)] // Will be split in Phase 1 restructuring
 async fn scan_url(
     url: String,
     browser: Arc<Browser>,
@@ -284,7 +278,7 @@ async fn scan_url(
     let start = Instant::now();
 
     if verbose {
-        println!("{} {}", "[*]".cyan(), format!("Scanning {}", url).dimmed());
+        println!("{} {}", "[*]".cyan(), format!("Scanning {url}").dimmed());
     }
 
     let scanner = SecretScanner::new();
@@ -299,7 +293,7 @@ async fn scan_url(
                 "Page creation/navigation timeout after 60s"
             ))
         }
-        Ok(Err(e)) => return Err(anyhow::anyhow!("Failed to create page: {}", e)),
+        Ok(Err(e)) => return Err(anyhow::anyhow!("Failed to create page: {e}")),
         Ok(Ok(p)) => p,
     };
 
@@ -325,7 +319,7 @@ async fn scan_url(
     let dom_data = dom::collect(&page, &scanner).await?;
     let target_host = url::Url::parse(&url)
         .ok()
-        .and_then(|u| u.host_str().map(|s| s.to_string()));
+        .and_then(|u| u.host_str().map(std::borrow::ToOwned::to_owned));
     let script_data = javascript::collect(&page, &scanner, target_host.as_deref()).await?;
 
     let DomArtifacts {
@@ -355,7 +349,7 @@ async fn scan_url(
     let elapsed = start.elapsed();
     let secrets = scanner.get_findings().await;
     let comments = scanner.get_comments().await;
-    let secret_count: usize = secrets.values().map(|v| v.len()).sum();
+    let secret_count: usize = secrets.values().map(std::vec::Vec::len).sum();
 
     let all_calls = network_monitor.get_all_calls().await;
     let api_calls_list = network_monitor.get_api_calls().await;
@@ -450,10 +444,10 @@ fn analyze_security(
 
     if !insecure_cookies.is_empty() {
         vulnerabilities.push(Vulnerability {
-            vuln_type: "Insecure Cookies".to_string(),
-            severity: "medium".to_string(),
-            description: "Cookies missing Secure/HttpOnly flags".to_string(),
-            remediation: "Set Secure and HttpOnly flags on all session cookies".to_string(),
+            vuln_type: "Insecure Cookies".to_owned(),
+            severity: "medium".to_owned(),
+            description: "Cookies missing Secure/HttpOnly flags".to_owned(),
+            remediation: "Set Secure and HttpOnly flags on all session cookies".to_owned(),
             url: None,
         });
     }
@@ -463,7 +457,9 @@ fn analyze_security(
     // Analyze first-party document response for headers and CORS
     for call in calls {
         // Check for wildcard CORS (on any response)
-        if let Some(acao) = call.response_headers.get("access-control-allow-origin")
+        if let Some(acao) = call
+            .response_headers
+            .get("access-control-allow-origin")
             .or_else(|| call.response_headers.get("Access-Control-Allow-Origin"))
         {
             if acao == "*" {
@@ -487,16 +483,16 @@ fn analyze_security(
                         .collect();
 
                     if !headers_lower.contains_key("content-security-policy") {
-                        missing_headers.push("Content-Security-Policy".to_string());
+                        missing_headers.push("Content-Security-Policy".to_owned());
                     }
                     if !headers_lower.contains_key("strict-transport-security") {
-                        missing_headers.push("Strict-Transport-Security".to_string());
+                        missing_headers.push("Strict-Transport-Security".to_owned());
                     }
                     if !headers_lower.contains_key("x-frame-options") {
-                        missing_headers.push("X-Frame-Options".to_string());
+                        missing_headers.push("X-Frame-Options".to_owned());
                     }
                     if !headers_lower.contains_key("x-content-type-options") {
-                        missing_headers.push("X-Content-Type-Options".to_string());
+                        missing_headers.push("X-Content-Type-Options".to_owned());
                     }
                 }
             }
@@ -506,30 +502,38 @@ fn analyze_security(
     // Add vulnerabilities for findings
     if !cors_issues.is_empty() {
         vulnerabilities.push(Vulnerability {
-            vuln_type: "CORS Misconfiguration".to_string(),
-            severity: "medium".to_string(),
-            description: format!("Wildcard Access-Control-Allow-Origin found on {} endpoint(s)", cors_issues.len()),
-            remediation: "Restrict CORS to specific trusted origins instead of using wildcard (*)".to_string(),
+            vuln_type: "CORS Misconfiguration".to_owned(),
+            severity: "medium".to_owned(),
+            description: format!(
+                "Wildcard Access-Control-Allow-Origin found on {} endpoint(s)",
+                cors_issues.len()
+            ),
+            remediation: "Restrict CORS to specific trusted origins instead of using wildcard (*)"
+                .to_owned(),
             url: None,
         });
     }
 
     if !missing_headers.is_empty() {
         vulnerabilities.push(Vulnerability {
-            vuln_type: "Missing Security Headers".to_string(),
-            severity: "low".to_string(),
+            vuln_type: "Missing Security Headers".to_owned(),
+            severity: "low".to_owned(),
             description: format!("Missing headers: {}", missing_headers.join(", ")),
-            remediation: "Add security headers: CSP, HSTS, X-Frame-Options, X-Content-Type-Options".to_string(),
+            remediation: "Add security headers: CSP, HSTS, X-Frame-Options, X-Content-Type-Options"
+                .to_owned(),
             url: None,
         });
     }
 
     if !mixed_content.is_empty() {
         vulnerabilities.push(Vulnerability {
-            vuln_type: "Mixed Content".to_string(),
-            severity: "low".to_string(),
-            description: format!("{} HTTP resource(s) loaded on HTTPS page", mixed_content.len()),
-            remediation: "Ensure all resources are loaded over HTTPS".to_string(),
+            vuln_type: "Mixed Content".to_owned(),
+            severity: "low".to_owned(),
+            description: format!(
+                "{} HTTP resource(s) loaded on HTTPS page",
+                mixed_content.len()
+            ),
+            remediation: "Ensure all resources are loaded over HTTPS".to_owned(),
             url: None,
         });
     }

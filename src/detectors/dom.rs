@@ -39,7 +39,7 @@ pub async fn collect(page: &Page, scanner: &SecretScanner) -> Result<DomArtifact
         "Array.from(document.querySelectorAll('meta')).map(m => ({ name: m.name || m.getAttribute('property') || '', content: m.content }))"
     ).await;
 
-    let data_attributes = page_utils::extract_json::<Vec<DataAttribute>>(page, r#"
+    let data_attributes = page_utils::extract_json::<Vec<DataAttribute>>(page, r"
         Array.from(document.querySelectorAll('[data-api], [data-url], [data-endpoint], [data-key], [data-token], [data-config]')).map(el => {
             const attrs = {};
             for (const attr of el.attributes) {
@@ -49,7 +49,7 @@ pub async fn collect(page: &Page, scanner: &SecretScanner) -> Result<DomArtifact
             }
             return { tag: el.tagName.toLowerCase(), attributes: attrs };
         })
-    "#).await;
+    ").await;
 
     for attr in &data_attributes {
         let attr_json = serde_json::to_string(&attr.attributes)?;
@@ -70,12 +70,12 @@ pub async fn collect(page: &Page, scanner: &SecretScanner) -> Result<DomArtifact
 
     let local_storage = page_utils::extract_json::<HashMap<String, String>>(
         page,
-        r#"
+        r"
         (() => {
             try { return Object.assign({}, window.localStorage); }
             catch (e) { return {}; }
         })()
-    "#,
+    ",
     )
     .await;
     let local_storage_json = serde_json::to_string(&local_storage)?;
@@ -83,12 +83,12 @@ pub async fn collect(page: &Page, scanner: &SecretScanner) -> Result<DomArtifact
 
     let session_storage = page_utils::extract_json::<HashMap<String, String>>(
         page,
-        r#"
+        r"
         (() => {
             try { return Object.assign({}, window.sessionStorage); }
             catch (e) { return {}; }
         })()
-    "#,
+    ",
     )
     .await;
     let session_storage_json = serde_json::to_string(&session_storage)?;

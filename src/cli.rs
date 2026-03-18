@@ -39,7 +39,7 @@ pub struct Args {
 
     /// Output directory for scan results
     ///
-    /// Results saved as: <OUTPUT>/<domain>/scan_result.json and REPORT.md
+    /// Results saved as: <OUTPUT>/<domain>/`scan_result.json` and REPORT.md
     #[arg(short, long, default_value = "corrode-output", value_name = "DIR")]
     pub output: PathBuf,
 
