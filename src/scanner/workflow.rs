@@ -1,10 +1,9 @@
-use anyhow::{bail, Context, Result};
+use anyhow::{Context, Result};
 use chrono::Utc;
 use colored::Colorize;
 use futures::StreamExt;
-use std::env;
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio::time;
@@ -14,13 +13,13 @@ use crate::detectors::{
     dom::{self, DomArtifacts},
     javascript::{self, ScriptArtifacts},
     secrets::SecretScanner,
+    security::analyze_security,
 };
 use crate::network::monitor::NetworkMonitor;
 use crate::reporting::{json as json_report, markdown};
+use crate::scanner::chrome::resolve_chrome_binary;
 use crate::scanner::page_utils;
-use crate::types::{
-    DomAnalysis, JavaScriptAnalysis, NetworkAnalysis, ScanResult, SecurityAnalysis, Vulnerability,
-};
+use crate::types::{DomAnalysis, JavaScriptAnalysis, NetworkAnalysis, ScanResult};
 use chromiumoxide::browser::{Browser, BrowserConfig};
 
 #[allow(clippy::too_many_lines)] // Will be split in Phase 1 restructuring
@@ -182,90 +181,6 @@ pub async fn run(config: Config) -> Result<()> {
     Ok(())
 }
 
-fn resolve_chrome_binary(override_path: Option<PathBuf>) -> Result<PathBuf> {
-    if let Some(path) = override_path {
-        if path.is_file() {
-            return Ok(path);
-        }
-        bail!(
-            "Chrome/Chromium binary not found at provided path: {}",
-            path.display()
-        );
-    }
-
-    for key in ["CHROME_BIN", "CHROMIUM_BIN"] {
-        if let Ok(val) = env::var(key) {
-            let candidate = PathBuf::from(val);
-            if candidate.is_file() {
-                return Ok(candidate);
-            }
-        }
-    }
-
-    let mut candidates: Vec<PathBuf> = Vec::new();
-
-    if let Some(path_var) = env::var_os("PATH") {
-        for dir in env::split_paths(&path_var) {
-            candidates.extend(candidate_names().map(|name| dir.join(name)));
-            if cfg!(windows) {
-                candidates.extend(candidate_names().map(|name| dir.join(format!("{name}.exe"))));
-            }
-        }
-    }
-
-    candidates.extend(known_locations());
-
-    if let Some(found) = candidates.into_iter().find(|p| p.is_file()) {
-        return Ok(found);
-    }
-
-    bail!(
-        "Could not locate Chrome/Chromium. Set --chrome-bin or CHROME_BIN. Checked common names (google-chrome, chromium, chrome) on PATH and standard install locations."
-    );
-}
-
-fn candidate_names() -> impl Iterator<Item = &'static str> {
-    [
-        "google-chrome",
-        "google-chrome-stable",
-        "chromium",
-        "chromium-browser",
-        "chrome",
-    ]
-    .into_iter()
-}
-
-fn known_locations() -> Vec<PathBuf> {
-    let mut paths: Vec<PathBuf> = Vec::new();
-
-    if cfg!(target_os = "macos") {
-        paths.push("/Applications/Google Chrome.app/Contents/MacOS/Google Chrome".into());
-        paths.push("/Applications/Chromium.app/Contents/MacOS/Chromium".into());
-    }
-
-    if cfg!(target_os = "windows") {
-        paths.push(r"C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe".into());
-        paths.push(r"C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe".into());
-        paths.push(r"C:\\Program Files\\Chromium\\Application\\chrome.exe".into());
-    }
-
-    if cfg!(target_os = "linux") {
-        paths.extend(
-            [
-                "/usr/bin/google-chrome",
-                "/usr/bin/google-chrome-stable",
-                "/usr/bin/chromium",
-                "/usr/bin/chromium-browser",
-                "/snap/bin/chromium",
-            ]
-            .into_iter()
-            .map(PathBuf::from),
-        );
-    }
-
-    paths
-}
-
 #[allow(clippy::too_many_lines)] // Will be split in Phase 1 restructuring
 async fn scan_url(
     url: String,
@@ -422,128 +337,4 @@ async fn scan_url(
     }
 
     Ok(result)
-}
-
-fn analyze_security(
-    cookies: &[chromiumoxide::cdp::browser_protocol::network::Cookie],
-    calls: &[crate::types::ApiCall],
-    target_url: &str,
-) -> (Vec<Vulnerability>, SecurityAnalysis) {
-    let mut vulnerabilities = Vec::new();
-    let mut insecure_cookies = Vec::new();
-    let mut cors_issues = Vec::new();
-    let mut missing_headers = Vec::new();
-    let mut mixed_content = Vec::new();
-
-    // Check cookies
-    for cookie in cookies {
-        if !cookie.secure || !cookie.http_only {
-            insecure_cookies.push(cookie.name.clone());
-        }
-    }
-
-    if !insecure_cookies.is_empty() {
-        vulnerabilities.push(Vulnerability {
-            vuln_type: "Insecure Cookies".to_owned(),
-            severity: "medium".to_owned(),
-            description: "Cookies missing Secure/HttpOnly flags".to_owned(),
-            remediation: "Set Secure and HttpOnly flags on all session cookies".to_owned(),
-            url: None,
-        });
-    }
-
-    let target_is_https = target_url.starts_with("https://");
-
-    // Analyze first-party document response for headers and CORS
-    for call in calls {
-        // Check for wildcard CORS (on any response)
-        if let Some(acao) = call
-            .response_headers
-            .get("access-control-allow-origin")
-            .or_else(|| call.response_headers.get("Access-Control-Allow-Origin"))
-        {
-            if acao == "*" {
-                cors_issues.push(call.url.clone());
-            }
-        }
-
-        // Check for mixed content (HTTPS page loading HTTP resources)
-        if target_is_https && call.url.starts_with("http://") {
-            mixed_content.push(call.url.clone());
-        }
-
-        // Check security headers on the main document (first HTML response)
-        if call.url == target_url || call.url.starts_with(target_url) {
-            if let Some(ct) = &call.response_content_type {
-                if ct.contains("text/html") {
-                    let headers_lower: std::collections::HashMap<String, String> = call
-                        .response_headers
-                        .iter()
-                        .map(|(k, v)| (k.to_lowercase(), v.clone()))
-                        .collect();
-
-                    if !headers_lower.contains_key("content-security-policy") {
-                        missing_headers.push("Content-Security-Policy".to_owned());
-                    }
-                    if !headers_lower.contains_key("strict-transport-security") {
-                        missing_headers.push("Strict-Transport-Security".to_owned());
-                    }
-                    if !headers_lower.contains_key("x-frame-options") {
-                        missing_headers.push("X-Frame-Options".to_owned());
-                    }
-                    if !headers_lower.contains_key("x-content-type-options") {
-                        missing_headers.push("X-Content-Type-Options".to_owned());
-                    }
-                }
-            }
-        }
-    }
-
-    // Add vulnerabilities for findings
-    if !cors_issues.is_empty() {
-        vulnerabilities.push(Vulnerability {
-            vuln_type: "CORS Misconfiguration".to_owned(),
-            severity: "medium".to_owned(),
-            description: format!(
-                "Wildcard Access-Control-Allow-Origin found on {} endpoint(s)",
-                cors_issues.len()
-            ),
-            remediation: "Restrict CORS to specific trusted origins instead of using wildcard (*)"
-                .to_owned(),
-            url: None,
-        });
-    }
-
-    if !missing_headers.is_empty() {
-        vulnerabilities.push(Vulnerability {
-            vuln_type: "Missing Security Headers".to_owned(),
-            severity: "low".to_owned(),
-            description: format!("Missing headers: {}", missing_headers.join(", ")),
-            remediation: "Add security headers: CSP, HSTS, X-Frame-Options, X-Content-Type-Options"
-                .to_owned(),
-            url: None,
-        });
-    }
-
-    if !mixed_content.is_empty() {
-        vulnerabilities.push(Vulnerability {
-            vuln_type: "Mixed Content".to_owned(),
-            severity: "low".to_owned(),
-            description: format!(
-                "{} HTTP resource(s) loaded on HTTPS page",
-                mixed_content.len()
-            ),
-            remediation: "Ensure all resources are loaded over HTTPS".to_owned(),
-            url: None,
-        });
-    }
-
-    let security = SecurityAnalysis {
-        missing_headers,
-        cors_issues,
-        insecure_cookies,
-        mixed_content,
-    };
-
-    (vulnerabilities, security)
 }
