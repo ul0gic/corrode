@@ -20,13 +20,13 @@ jobs:
         include:
           - os: ubuntu-latest
             target: x86_64-unknown-linux-gnu
-            binary: corrode
+            binary: corrode-scanner
           - os: macos-latest
             target: x86_64-apple-darwin
-            binary: corrode
+            binary: corrode-scanner
           - os: macos-latest
             target: aarch64-apple-darwin
-            binary: corrode
+            binary: corrode-scanner
     steps:
       - name: Checkout
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2

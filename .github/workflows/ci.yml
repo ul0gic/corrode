@@ -114,7 +114,7 @@ jobs:
         run: cargo build --release
 
       - name: Verify binary
-        run: ./target/release/corrode --help
+        run: ./target/release/corrode-scanner --help
 
   audit:
     name: Security Audit
