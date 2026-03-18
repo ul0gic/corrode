@@ -42,7 +42,7 @@ pub fn patterns() -> Vec<(&'static str, Regex)> {
         ),
         (
             "heroku",
-            Regex::new(r"[h|H][e|E][r|R][o|O][k|K][u|U].*[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}").unwrap(),
+            Regex::new(r"(?i)heroku.{0,40}[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}").unwrap(),
         ),
         // DigitalOcean Personal Access Token, OAuth Token, Refresh Token
         (

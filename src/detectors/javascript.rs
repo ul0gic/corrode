@@ -3,7 +3,6 @@ use chromiumoxide::Page;
 use regex::Regex;
 use serde_json::Value;
 use std::collections::HashMap;
-use std::fs;
 use std::sync::LazyLock;
 use tokio::time::{self, Duration};
 use url::Url;
@@ -75,17 +74,8 @@ pub async fn collect(
 
                 let mut fetched = None;
 
-                if let Ok(url) = Url::parse(src) {
-                    if url.scheme() == "file" {
-                        if let Ok(path) = url.to_file_path() {
-                            if let Ok(text) = fs::read_to_string(&path) {
-                                fetched = Some(text);
-                            }
-                        }
-                    }
-                }
-
-                if fetched.is_none() {
+                // Only fetch http/https scripts — never file:// (SEC-005)
+                if src.starts_with("http://") || src.starts_with("https://") {
                     if let Ok(Ok(resp)) =
                         time::timeout(Duration::from_secs(10), reqwest::get(src)).await
                     {
@@ -422,7 +412,7 @@ fn is_first_party_url(url: &str, target_host: Option<&str>) -> bool {
 #[allow(clippy::unwrap_used)]
 static RSC_VULN_REGEX: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(
-        r"(react-server-dom-(?:webpack|parcel|turbopack))[^0-9]{0,15}(19\.0(?:\.0)?|19\.1\.0|19\.1\.1|19\.2\.0)",
+        r"(react-server-dom-(?:webpack|parcel|turbopack))[^0-9]{0,15}(19\.0\.0|19\.1\.0|19\.1\.1|19\.2\.0)\b",
     )
     .unwrap()
 });

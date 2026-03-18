@@ -50,12 +50,23 @@ impl SecretScanner {
     pub fn with_custom_config(custom: &[CustomPattern], ignore: &[String]) -> Self {
         let mut compiled = Vec::new();
         for cp in custom {
-            match Regex::new(&cp.pattern) {
+            // SEC-003: Limit custom pattern size to prevent memory exhaustion
+            if cp.pattern.len() > 500 {
+                eprintln!(
+                    "[!] Skipping custom pattern '{}': pattern exceeds 500 char limit",
+                    cp.name
+                );
+                continue;
+            }
+            match regex::RegexBuilder::new(&cp.pattern)
+                .size_limit(1_000_000)
+                .build()
+            {
                 Ok(regex) => {
                     compiled.push((cp.name.clone(), regex));
                 }
                 Err(e) => {
-                    eprintln!("[!] Skipping invalid custom pattern '{}': {}", cp.name, e);
+                    eprintln!("[!] Skipping invalid custom pattern '{}': {e}", cp.name);
                 }
             }
         }
