@@ -1,0 +1,138 @@
+# corrode.toml — Example configuration for Corrode
+#
+# Corrode discovers this file automatically in the following order:
+#   1. --config <PATH>          explicit override via CLI flag
+#   2. ./corrode.toml           current working directory
+#   3. ~/.config/corrode/config.toml   global per-user config
+#
+# CLI flags always override config file values.
+# All sections and fields are optional — omit anything you don't need.
+#
+# Copy this file to your working directory (or ~/.config/corrode/config.toml)
+# and edit it to match your engagement setup.
+
+# ---------------------------------------------------------------------------
+# [scan] — Core scan behaviour
+# ---------------------------------------------------------------------------
+[scan]
+
+# Page-load timeout in seconds. Increase for slow or JS-heavy targets.
+# CLI equivalent: --timeout
+# Default: 30
+timeout = 60
+
+# Enable verbose output (progress, live findings, per-URL summaries).
+# CLI equivalent: --verbose
+# Default: false
+verbose = false
+
+# Output format: "json", "md", or "both".
+# "md"   — Markdown report only (default)
+# "json" — Machine-readable JSON only
+# "both" — Write both formats
+# CLI equivalent: --format
+# Default: "md"
+format = "md"
+
+# Output directory root. Per-target results land in <output_dir>/<domain>/.
+# CLI equivalent: --output / -o
+# Default: "corrode-output"
+output_dir = "corrode-output"
+
+# ---------------------------------------------------------------------------
+# [chrome] — Headless browser settings
+# ---------------------------------------------------------------------------
+[chrome]
+
+# Absolute path to a Chrome or Chromium binary.
+# Only needed if auto-detection fails or you want to pin a specific version.
+# CLI equivalent: --chrome-bin / CHROME_BIN env var
+# Default: auto-detect
+# binary = "/usr/bin/google-chrome-stable"
+
+# Additional Chrome command-line arguments passed to the browser process.
+# Useful for proxy settings, disabling certificate errors in lab environments,
+# or forcing specific user-agent strings.
+# Default: [] (no extra args)
+# args = [
+#   "--proxy-server=http://127.0.0.1:8080",
+#   "--ignore-certificate-errors",
+# ]
+
+# ---------------------------------------------------------------------------
+# [patterns] — Custom detection patterns and suppression
+# ---------------------------------------------------------------------------
+[patterns]
+
+# ignore_patterns — suppress built-in patterns by name.
+# Use this to silence high-noise patterns on targets where they produce
+# too many false positives. Pattern names match the keys in the built-in
+# pattern registry (e.g., "internal_ip", "jwt", "gcp_service_account").
+#
+# Example: suppress internal IP and GCP service account findings on a target
+# that legitimately exposes these values.
+# ignore_patterns = [
+#   "internal_ip",
+#   "gcp_service_account",
+# ]
+ignore_patterns = []
+
+# custom_patterns — add your own secret detection patterns.
+# Each entry requires:
+#   name     — human-readable label shown in reports
+#   pattern  — Rust-compatible regex string (use single quotes to avoid escaping)
+#   severity — "critical", "high", "medium", "low", or "info"
+#
+# Custom patterns are appended to the built-in set. They are subject to the
+# same context extraction and source attribution as built-in patterns.
+#
+# Pattern tips:
+#   - Use anchors and character classes to reduce false positives.
+#   - Avoid unbounded quantifiers (e.g., .* or .+) — prefer {n,m} ranges.
+#   - Patterns are case-sensitive by default; use (?i) for case-insensitive.
+#   - Test your regex against known true positives before engaging a target.
+
+# Example: detect a custom internal API token format
+[[patterns.custom_patterns]]
+name = "Internal API Token"
+pattern = 'int_[A-Za-z0-9]{32,48}'
+severity = "critical"
+
+# Example: detect a legacy session token format
+[[patterns.custom_patterns]]
+name = "Legacy Session Token"
+pattern = 'sess_[a-f0-9]{40}'
+severity = "high"
+
+# Example: detect a custom admin secret embedded in JS config objects
+# Uses a context anchor to avoid matching unrelated 32-char hex strings
+[[patterns.custom_patterns]]
+name = "Admin Panel Secret"
+pattern = '(?i)admin[_-]?secret[\s'"'"'"{0,3}(?:=|:)[\s'"'"'"{0,5}([A-Za-z0-9!@#$%^&*_\-]{24,})'
+severity = "critical"
+
+# Example: detect exposure of an internal service name that indicates a staging
+# or debug endpoint was left reachable (informational finding)
+[[patterns.custom_patterns]]
+name = "Internal Service Hostname"
+pattern = '(?:api|svc|int)\.internal\.[a-z0-9\-]+\.example\.com'
+severity = "info"
+
+# ---------------------------------------------------------------------------
+# [report] — Output and reporting behaviour
+# ---------------------------------------------------------------------------
+[report]
+
+# Redact secret values in the Markdown report.
+# When true, the Value field in each finding shows only the first 4 characters
+# followed by *** (e.g., "sk-l***"). The JSON output is unaffected.
+# Useful when sharing reports with stakeholders or storing them in ticketing systems.
+# Default: false
+redact_secrets = false
+
+# Include the full network request log in the Markdown report.
+# The network log captures every HTTP request the page made during the scan,
+# including third-party domains, API calls, and CDN requests.
+# This can add significant length to reports on JS-heavy SPAs.
+# Default: false
+include_network_log = false
