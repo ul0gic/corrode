@@ -35,9 +35,10 @@ fn is_api_like(url: &str) -> bool {
 fn format_calls_table(calls: &[ApiCall]) -> Vec<String> {
     let mut lines = Vec::new();
     lines.push("```".to_owned());
+    let header_auth = "AUTH";
     lines.push(format!(
         "{:<6} {:<6} {:<18} {:<60} {}",
-        "METHOD", "CODE", "CT", "URL", "AUTH"
+        "METHOD", "CODE", "CT", "URL", header_auth
     ));
     for call in calls {
         let method = if call.method.is_empty() {
@@ -52,7 +53,7 @@ fn format_calls_table(calls: &[ApiCall]) -> Vec<String> {
         };
         let url = truncate_middle(&call.url, 60);
         let hints = header_hints(&call.request_headers);
-        let ct = content_type_for_call(call).unwrap_or("-".to_owned());
+        let ct = content_type_for_call(call).unwrap_or_else(|| "-".to_owned());
         lines.push(format!(
             "{:<6} {:<6} {:<18} {:<60} {}",
             method,
@@ -85,42 +86,104 @@ fn header_value<'a>(
         .map(|(_, v)| v.as_str())
 }
 
+/// Extract the domain from a URL for grouping.
+fn extract_domain(url_str: &str) -> String {
+    url::Url::parse(url_str)
+        .ok()
+        .and_then(|u| u.host_str().map(std::borrow::ToOwned::to_owned))
+        .unwrap_or_else(|| "unknown".to_owned())
+}
+
 pub(crate) fn render_network(result: &ScanResult) -> Vec<String> {
     let mut report = Vec::new();
 
-    if result.network.total_requests > 0 || !result.network.calls.is_empty() {
-        report.push("---\n## 🌐 Network Activity\n".to_owned());
-        report.push(format!(
-            "- Total Requests: {}",
-            result.network.total_requests
-        ));
-        report.push(format!(
-            "- API-like Requests: {}",
-            result.network.api_calls.len()
-        ));
-        report.push(format!(
-            "- Third-Party Requests: {}",
-            result.network.third_party.len()
-        ));
+    if result.network.total_requests == 0 && result.network.calls.is_empty() {
+        return report;
+    }
 
-        let mut calls = result
-            .network
-            .calls
-            .iter()
-            .filter(|c| is_api_like(&c.url))
-            .take(10)
-            .cloned()
-            .collect::<Vec<ApiCall>>();
+    report.push("---\n## Network Activity\n".to_owned());
 
-        if calls.is_empty() {
-            calls = result.network.calls.iter().take(10).cloned().collect();
-        }
+    // Summary stats
+    report.push(format!(
+        "- Total Requests: {}",
+        result.network.total_requests
+    ));
+    report.push(format!(
+        "- API-like Requests: {}",
+        result.network.api_calls.len()
+    ));
+    report.push(format!(
+        "- Third-Party Requests: {}",
+        result.network.third_party.len()
+    ));
+    report.push(String::new());
 
-        if !calls.is_empty() {
-            report.push("Key Requests (method, status, auth hints):".to_owned());
-            report.extend(format_calls_table(&calls));
+    // First-party vs third-party breakdown
+    let target_domain = extract_domain(&result.url);
+    let first_party: Vec<&ApiCall> = result
+        .network
+        .calls
+        .iter()
+        .filter(|c| {
+            let call_domain = extract_domain(&c.url);
+            call_domain == target_domain
+        })
+        .collect();
+    let third_party: Vec<&ApiCall> = result
+        .network
+        .calls
+        .iter()
+        .filter(|c| {
+            let call_domain = extract_domain(&c.url);
+            call_domain != target_domain
+        })
+        .collect();
+
+    report.push(format!(
+        "**First-party requests**: {} | **Third-party requests**: {}\n",
+        first_party.len(),
+        third_party.len()
+    ));
+
+    // External domains contacted
+    if !third_party.is_empty() {
+        let mut domains: Vec<String> = third_party.iter().map(|c| extract_domain(&c.url)).collect();
+        domains.sort();
+        domains.dedup();
+
+        if !domains.is_empty() {
+            report.push("### External Domains Contacted\n".to_owned());
+            report.push("| Domain | Requests |".to_owned());
+            report.push("|--------|----------|".to_owned());
+            for domain in &domains {
+                let count = third_party
+                    .iter()
+                    .filter(|c| extract_domain(&c.url) == *domain)
+                    .count();
+                report.push(format!("| {domain} | {count} |"));
+            }
             report.push(String::new());
         }
+    }
+
+    // Key requests table (API-like first, then general)
+    let mut calls: Vec<ApiCall> = result
+        .network
+        .calls
+        .iter()
+        .filter(|c| is_api_like(&c.url))
+        .take(10)
+        .cloned()
+        .collect();
+
+    if calls.is_empty() {
+        calls = result.network.calls.iter().take(10).cloned().collect();
+    }
+
+    if !calls.is_empty() {
+        report.push("### Key Requests\n".to_owned());
+        report.extend(format_calls_table(&calls));
+        report.push(String::new());
     }
 
     report

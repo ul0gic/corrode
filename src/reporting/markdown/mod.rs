@@ -1,6 +1,7 @@
 mod appendix;
 mod findings;
 mod network;
+mod security;
 mod summary;
 mod technologies;
 
@@ -14,20 +15,20 @@ pub fn write(result: &ScanResult, base_output_dir: &Path) -> Result<()> {
     let mut report = Vec::new();
 
     // Report header
-    report.push("# 🦀 Corrode Security Scan Report\n".to_owned());
+    report.push("# Corrode Security Scan Report\n".to_owned());
     report.push(format!("**Target**: {}", result.url));
     report.push(format!("**Scan Date**: {}", result.timestamp));
     report.push("**Scanner**: Corrode v0.1.0\n".to_owned());
 
-    // Sections (order matches original report layout)
+    // Sections (ordered for operator workflow)
     report.extend(summary::render_summary(result));
     report.extend(findings::render_secrets(result));
-    report.extend(network::render_network(result));
-    report.extend(findings::render_vulnerabilities(result));
+    report.extend(security::render_security_posture(result));
     report.extend(findings::render_api_tests(result));
-    report.extend(appendix::render_appendix(result));
-    report.extend(technologies::render_dom(result)?);
     report.extend(technologies::render_technologies(result));
+    report.extend(network::render_network(result));
+    report.extend(technologies::render_dom(result)?);
+    report.extend(appendix::render_appendix(result));
     report.extend(appendix::render_recommendations());
 
     // Write to file

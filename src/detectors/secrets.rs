@@ -9,6 +9,7 @@ use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use tokio::sync::Mutex;
 
+use crate::config::CustomPattern;
 use crate::detectors::jwt::{is_anon_jwt, is_service_role_jwt};
 use crate::types::{Comment, SecretFinding};
 
@@ -18,15 +19,53 @@ lazy_static! {
     static ref COMMENT_MULTI: Regex = Regex::new(r"/\*([\s\S]*?)\*/").unwrap();
 }
 
-#[derive(Default)]
 pub struct SecretScanner {
     findings: Arc<Mutex<HashMap<String, Vec<SecretFinding>>>>,
     comments: Arc<Mutex<Vec<Comment>>>,
+    /// Compiled custom patterns from config file, keyed by name.
+    custom_patterns: Vec<(String, Regex)>,
+    /// Built-in pattern names to suppress.
+    ignore_patterns: HashSet<String>,
+}
+
+impl Default for SecretScanner {
+    fn default() -> Self {
+        Self {
+            findings: Arc::new(Mutex::new(HashMap::new())),
+            comments: Arc::new(Mutex::new(Vec::new())),
+            custom_patterns: Vec::new(),
+            ignore_patterns: HashSet::new(),
+        }
+    }
 }
 
 impl SecretScanner {
     pub fn new() -> Self {
         Self::default()
+    }
+
+    /// Create a scanner with custom patterns and an ignore list.
+    /// Custom patterns are compiled from user-supplied regex strings.
+    /// Invalid regexes are logged and skipped (not fatal).
+    pub fn with_custom_config(custom: &[CustomPattern], ignore: &[String]) -> Self {
+        let mut compiled = Vec::new();
+        for cp in custom {
+            match Regex::new(&cp.pattern) {
+                Ok(regex) => {
+                    compiled.push((cp.name.clone(), regex));
+                }
+                Err(e) => {
+                    eprintln!("[!] Skipping invalid custom pattern '{}': {}", cp.name, e);
+                }
+            }
+        }
+
+        Self {
+            findings: Arc::new(Mutex::new(HashMap::new())),
+            comments: Arc::new(Mutex::new(Vec::new())),
+            custom_patterns: compiled,
+            ignore_patterns: ignore.iter().cloned().collect(),
+        }
     }
 
     pub async fn scan_text(&self, text: &str, source: &str) {
@@ -36,7 +75,12 @@ impl SecretScanner {
 
         let mut findings = self.findings.lock().await;
 
+        // Scan built-in patterns (respecting ignore list)
         for (pattern_name, regex) in SECRET_PATTERNS.iter() {
+            if self.ignore_patterns.contains(*pattern_name) {
+                continue;
+            }
+
             let matches: HashSet<String> = regex
                 .find_iter(text)
                 .map(|m| m.as_str().to_owned())
@@ -46,64 +90,90 @@ impl SecretScanner {
                 let matches_vec: Vec<String> = matches.into_iter().take(10).collect();
 
                 if *pattern_name == "jwt" {
-                    let service_role_jwts: Vec<String> = matches_vec
-                        .iter()
-                        .filter(|jwt| is_service_role_jwt(jwt))
-                        .cloned()
-                        .collect();
-                    let anon_jwts: Vec<String> = matches_vec
-                        .iter()
-                        .filter(|jwt| is_anon_jwt(jwt))
-                        .cloned()
-                        .collect();
-                    // JWTs not categorized as Supabase anon/service_role
-                    let other_jwts: Vec<String> = matches_vec
-                        .iter()
-                        .filter(|jwt| !is_service_role_jwt(jwt) && !is_anon_jwt(jwt))
-                        .cloned()
-                        .collect();
-
-                    if !service_role_jwts.is_empty() {
-                        findings
-                            .entry("supabase_service_role".to_owned())
-                            .or_insert_with(Vec::new)
-                            .push(SecretFinding {
-                                source: source.to_owned(),
-                                matches: service_role_jwts,
-                            });
-                    }
-
-                    if !anon_jwts.is_empty() {
-                        findings
-                            .entry("supabase_anon_jwt".to_owned())
-                            .or_insert_with(Vec::new)
-                            .push(SecretFinding {
-                                source: source.to_owned(),
-                                matches: anon_jwts,
-                            });
-                    }
-
-                    // Only add uncategorized JWTs to generic "jwt" bucket
-                    if !other_jwts.is_empty() {
-                        findings
-                            .entry("jwt".to_owned())
-                            .or_insert_with(Vec::new)
-                            .push(SecretFinding {
-                                source: source.to_owned(),
-                                matches: other_jwts,
-                            });
-                    }
+                    Self::categorize_jwts(&mut findings, &matches_vec, source);
                     continue;
                 }
 
                 findings
                     .entry((*pattern_name).to_owned())
-                    .or_insert_with(Vec::new)
+                    .or_default()
                     .push(SecretFinding {
                         source: source.to_owned(),
                         matches: matches_vec,
                     });
             }
+        }
+
+        // Scan custom patterns
+        for (name, regex) in &self.custom_patterns {
+            let matches: HashSet<String> = regex
+                .find_iter(text)
+                .map(|m| m.as_str().to_owned())
+                .collect();
+
+            if !matches.is_empty() {
+                let matches_vec: Vec<String> = matches.into_iter().take(10).collect();
+                findings
+                    .entry(name.clone())
+                    .or_default()
+                    .push(SecretFinding {
+                        source: source.to_owned(),
+                        matches: matches_vec,
+                    });
+            }
+        }
+    }
+
+    /// Categorize JWT matches into service-role, anon, or generic JWT buckets.
+    fn categorize_jwts(
+        findings: &mut HashMap<String, Vec<SecretFinding>>,
+        matches: &[String],
+        source: &str,
+    ) {
+        let service_role_jwts: Vec<String> = matches
+            .iter()
+            .filter(|jwt| is_service_role_jwt(jwt))
+            .cloned()
+            .collect();
+        let anon_jwts: Vec<String> = matches
+            .iter()
+            .filter(|jwt| is_anon_jwt(jwt))
+            .cloned()
+            .collect();
+        let other_jwts: Vec<String> = matches
+            .iter()
+            .filter(|jwt| !is_service_role_jwt(jwt) && !is_anon_jwt(jwt))
+            .cloned()
+            .collect();
+
+        if !service_role_jwts.is_empty() {
+            findings
+                .entry("supabase_service_role".to_owned())
+                .or_default()
+                .push(SecretFinding {
+                    source: source.to_owned(),
+                    matches: service_role_jwts,
+                });
+        }
+
+        if !anon_jwts.is_empty() {
+            findings
+                .entry("supabase_anon_jwt".to_owned())
+                .or_default()
+                .push(SecretFinding {
+                    source: source.to_owned(),
+                    matches: anon_jwts,
+                });
+        }
+
+        if !other_jwts.is_empty() {
+            findings
+                .entry("jwt".to_owned())
+                .or_default()
+                .push(SecretFinding {
+                    source: source.to_owned(),
+                    matches: other_jwts,
+                });
         }
     }
 
