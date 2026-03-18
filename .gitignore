@@ -14,6 +14,10 @@ targets.txt
 .claude/
 .project/
 
+# Test fixtures and test files (contain planted fake secrets for pattern validation)
+tests/
+fixtures/
+
 # IDE files
 .vscode/
 .idea/
