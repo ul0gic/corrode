@@ -1,13 +1,21 @@
 use serde_json::Value;
 
-/// Detect technologies from script URLs and bundle naming patterns.
-pub fn detect(scripts: &[Value]) -> Vec<String> {
+use crate::types::ApiCall;
+
+/// Detect technologies from script URLs, network request URLs, and bundle naming patterns.
+pub fn detect(scripts: &[Value], calls: &[ApiCall]) -> Vec<String> {
     let mut detected = Vec::new();
 
+    // Check DOM script src attributes
     for script in scripts {
         if let Some(src) = script.get("src").and_then(|v| v.as_str()) {
             detect_from_url(src, &mut detected);
         }
+    }
+
+    // Check network request URLs (catches resources not in document.scripts)
+    for call in calls {
+        detect_from_url(&call.url, &mut detected);
     }
 
     detected
@@ -43,6 +51,7 @@ fn detect_from_url(src: &str, detected: &mut Vec<String>) {
         // Cloud/platform
         ("cloudflareinsights.com", "Cloudflare"),
         ("static.cloudflareinsights.com", "Cloudflare"),
+        ("/_vercel/", "Vercel"),
         // API documentation
         ("swagger-ui", "Swagger UI"),
         ("redoc.standalone", "ReDoc"),
@@ -62,6 +71,16 @@ fn detect_from_url(src: &str, detected: &mut Vec<String>) {
     // Vite detection: asset URLs like /assets/index-B0psoMpO.js (8-char hash)
     if lower.contains("/assets/") && has_vite_hash_pattern(src) {
         add_unique(detected, "Vite");
+    }
+
+    // Next.js App Router: RSC payload requests use ?_rsc= query parameter
+    if lower.contains("?_rsc=") || lower.contains("&_rsc=") {
+        add_unique(detected, "Next.js (App Router)");
+    }
+
+    // Vercel deployment ID: ?dpl=dpl_ query parameter
+    if lower.contains("?dpl=dpl_") || lower.contains("&dpl=dpl_") {
+        add_unique(detected, "Vercel");
     }
 }
 

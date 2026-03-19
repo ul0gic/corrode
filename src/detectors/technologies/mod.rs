@@ -32,8 +32,8 @@ pub async fn detect_all(
     // HTML meta tag detection
     technologies.extend(meta::detect(meta_tags));
 
-    // Script URL/bundle pattern detection
-    technologies.extend(scripts::detect(scripts));
+    // Script URL/bundle pattern detection (DOM scripts + network requests)
+    technologies.extend(scripts::detect(scripts, calls));
 
     // Deduplicate
     technologies.sort();
