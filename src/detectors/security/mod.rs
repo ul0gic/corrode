@@ -29,31 +29,38 @@ pub(crate) fn analyze_security(
     }
 
     let target_is_https = target_url.starts_with("https://");
+    let target_host = url::Url::parse(target_url)
+        .ok()
+        .and_then(|u| u.host_str().map(str::to_lowercase));
+    let mut checked_headers = false;
 
-    // Analyze first-party document response for headers and CORS
     for call in calls {
-        // Check for wildcard CORS — only on responses that could carry sensitive data.
-        // Skip static assets, framework internals, and CDN resources where ACAO:* is expected.
+        // CORS: only flag first-party URLs where wildcard is a real misconfiguration.
+        // Third-party services (CDNs, analytics, consent tools) use ACAO:* by design.
         if let Some(acao) = call
             .response_headers
             .get("access-control-allow-origin")
             .or_else(|| call.response_headers.get("Access-Control-Allow-Origin"))
         {
             if acao == "*"
+                && is_first_party(&call.url, target_host.as_deref())
                 && !is_static_or_framework_url(&call.url, call.response_content_type.as_ref())
             {
                 cors_issues.push(call.url.clone());
             }
         }
 
-        // Check for mixed content (HTTPS page loading HTTP resources)
+        // Mixed content: HTTPS page loading HTTP resources
         if target_is_https && call.url.starts_with("http://") {
             mixed_content.push(call.url.clone());
         }
 
-        // Check security headers on the main document (first HTML response)
-        if call.url == target_url || call.url.starts_with(target_url) {
-            check_security_headers(call, &mut missing_headers);
+        // Security headers: check once on the first matching HTML document response
+        if !checked_headers
+            && (call.url == target_url || call.url.starts_with(target_url))
+            && check_security_headers(call, &mut missing_headers)
+        {
+            checked_headers = true;
         }
     }
 
@@ -107,12 +114,13 @@ pub(crate) fn analyze_security(
 }
 
 /// Check the main document response for missing security headers.
-fn check_security_headers(call: &crate::types::ApiCall, missing: &mut Vec<String>) {
+/// Returns true if this was an HTML response (so caller can stop checking).
+fn check_security_headers(call: &crate::types::ApiCall, missing: &mut Vec<String>) -> bool {
     let Some(ct) = &call.response_content_type else {
-        return;
+        return false;
     };
     if !ct.contains("text/html") {
-        return;
+        return false;
     }
 
     let headers_lower: std::collections::HashMap<String, String> = call
@@ -139,6 +147,22 @@ fn check_security_headers(call: &crate::types::ApiCall, missing: &mut Vec<String
             missing.push((*name).to_owned());
         }
     }
+
+    true
+}
+
+/// Returns true if the URL belongs to the same domain as the target.
+fn is_first_party(url: &str, target_host: Option<&str>) -> bool {
+    let Some(target) = target_host else {
+        return true;
+    };
+    if let Ok(parsed) = url::Url::parse(url) {
+        if let Some(host) = parsed.host_str() {
+            let host_lower = host.to_lowercase();
+            return host_lower == target || host_lower.ends_with(&format!(".{target}"));
+        }
+    }
+    true
 }
 
 /// Returns true if the URL/content-type indicates a static asset or framework
