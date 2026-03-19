@@ -23,18 +23,18 @@ futures = "0.3"
 regex = "1.10"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
-clap = { version = "4.5", features = ["derive", "env"] }
+clap = { version = "4.5.60", features = ["derive", "env"] }
 anyhow = "1.0"
 url = "2.5"
-colored = "2.1"
+colored = "3.1"
 reqwest = { version = "0.12", features = ["json"] }
 chrono = "0.4"
 lazy_static = "1.4"
 base64 = "0.22"
-swc_common = "17.0.1"
-swc_ecma_ast = "18.0.0"
-swc_ecma_parser = { version = "27.0.6", features = ["typescript"] }
-swc_ecma_visit = "18.0.1"
+swc_common = "19.0"
+swc_ecma_ast = "21.0"
+swc_ecma_parser = { version = "35.0", features = ["typescript"] }
+swc_ecma_visit = "21.0"
 toml = "0.8"
 dirs = "5"
 
