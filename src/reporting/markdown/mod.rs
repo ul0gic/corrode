@@ -18,7 +18,10 @@ pub fn write(result: &ScanResult, base_output_dir: &Path) -> Result<()> {
     report.push("# Corrode Security Scan Report\n".to_owned());
     report.push(format!("**Target**: {}", result.url));
     report.push(format!("**Scan Date**: {}", result.timestamp));
-    report.push("**Scanner**: Corrode v0.1.0\n".to_owned());
+    report.push(format!(
+        "**Scanner**: Corrode v{}\n",
+        env!("CARGO_PKG_VERSION")
+    ));
 
     // Sections (ordered for operator workflow)
     report.extend(summary::render_summary(result));
@@ -29,7 +32,7 @@ pub fn write(result: &ScanResult, base_output_dir: &Path) -> Result<()> {
     report.extend(network::render_network(result));
     report.extend(technologies::render_dom(result)?);
     report.extend(appendix::render_appendix(result));
-    report.extend(appendix::render_recommendations());
+    report.extend(appendix::render_recommendations(result));
 
     // Write to file
     let domain = url::Url::parse(&result.url)

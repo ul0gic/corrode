@@ -2,100 +2,119 @@ use anyhow::Result;
 
 use crate::types::ScanResult;
 
+/// Keyword-to-category mapping for technology classification.
+const TECH_CATEGORIES: &[(&str, &str)] = &[
+    // Frameworks
+    ("react", "Frameworks"),
+    ("vue", "Frameworks"),
+    ("angular", "Frameworks"),
+    ("svelte", "Frameworks"),
+    ("next", "Frameworks"),
+    ("nuxt", "Frameworks"),
+    ("remix", "Frameworks"),
+    ("gatsby", "Frameworks"),
+    ("ember", "Frameworks"),
+    ("backbone", "Frameworks"),
+    // Static Site Generators
+    ("astro", "Static Site Generators"),
+    ("hugo", "Static Site Generators"),
+    ("jekyll", "Static Site Generators"),
+    ("eleventy", "Static Site Generators"),
+    ("hexo", "Static Site Generators"),
+    ("docusaurus", "Static Site Generators"),
+    ("vuepress", "Static Site Generators"),
+    ("mkdocs", "Static Site Generators"),
+    ("pelican", "Static Site Generators"),
+    // Backend
+    ("express", "Backend"),
+    ("asp.net", "Backend"),
+    ("php", "Backend"),
+    ("flask", "Backend"),
+    ("django", "Backend"),
+    ("rails", "Backend"),
+    ("fastify", "Backend"),
+    ("koa", "Backend"),
+    ("hapi", "Backend"),
+    ("cowboy", "Backend"),
+    // Infrastructure
+    ("cloudflare", "Infrastructure"),
+    ("nginx", "Infrastructure"),
+    ("apache", "Infrastructure"),
+    ("vercel", "Infrastructure"),
+    ("netlify", "Infrastructure"),
+    ("fly.io", "Infrastructure"),
+    ("caddy", "Infrastructure"),
+    ("iis", "Infrastructure"),
+    ("envoy", "Infrastructure"),
+    ("openresty", "Infrastructure"),
+    ("gunicorn", "Infrastructure"),
+    ("deno deploy", "Infrastructure"),
+    // Authentication
+    ("auth0", "Authentication"),
+    ("clerk", "Authentication"),
+    ("okta", "Authentication"),
+    // Payment
+    ("stripe", "Payment"),
+    ("paypal", "Payment"),
+    ("braintree", "Payment"),
+    ("square", "Payment"),
+    // Analytics
+    ("google analytics", "Analytics"),
+    ("gtag", "Analytics"),
+    ("gtm", "Analytics"),
+    ("mixpanel", "Analytics"),
+    ("segment", "Analytics"),
+    ("amplitude", "Analytics"),
+    ("hotjar", "Analytics"),
+    ("heap", "Analytics"),
+    ("fullstory", "Analytics"),
+    ("plausible", "Analytics"),
+    // CMS/Platforms
+    ("wordpress", "CMS/Platforms"),
+    ("drupal", "CMS/Platforms"),
+    ("joomla", "CMS/Platforms"),
+    ("ghost", "CMS/Platforms"),
+    ("wix", "CMS/Platforms"),
+    ("squarespace", "CMS/Platforms"),
+    ("shopify", "CMS/Platforms"),
+    ("webflow", "CMS/Platforms"),
+    ("contentful", "CMS/Platforms"),
+    ("strapi", "CMS/Platforms"),
+    // Cloud/BaaS
+    ("supabase", "Cloud/BaaS"),
+    ("firebase", "Cloud/BaaS"),
+    ("appwrite", "Cloud/BaaS"),
+    ("aws", "Cloud/BaaS"),
+    ("azure", "Cloud/BaaS"),
+    ("gcp", "Cloud/BaaS"),
+    // Libraries
+    ("jquery", "Libraries"),
+    ("lodash", "Libraries"),
+    ("axios", "Libraries"),
+    ("moment", "Libraries"),
+    ("tailwind", "Libraries"),
+    ("bootstrap", "Libraries"),
+    // State Management
+    ("redux", "State Management"),
+    ("mobx", "State Management"),
+    ("zustand", "State Management"),
+    ("pinia", "State Management"),
+    ("recoil", "State Management"),
+    // Monitoring
+    ("sentry", "Monitoring"),
+    ("datadog", "Monitoring"),
+    ("newrelic", "Monitoring"),
+    ("logr", "Monitoring"),
+];
+
 /// Categorize a technology name into a group for organized display.
 fn categorize_technology(tech: &str) -> &'static str {
     let lower = tech.to_lowercase();
-
-    if lower.contains("react")
-        || lower.contains("vue")
-        || lower.contains("angular")
-        || lower.contains("svelte")
-        || lower.contains("next")
-        || lower.contains("nuxt")
-        || lower.contains("remix")
-        || lower.contains("gatsby")
-        || lower.contains("ember")
-        || lower.contains("backbone")
-    {
-        return "Frameworks";
+    for (keyword, category) in TECH_CATEGORIES {
+        if lower.contains(keyword) {
+            return category;
+        }
     }
-
-    if lower.contains("auth0")
-        || lower.contains("clerk")
-        || lower.contains("okta")
-        || lower.contains("firebase auth")
-        || lower.contains("supabase auth")
-    {
-        return "Authentication";
-    }
-
-    if lower.contains("stripe")
-        || lower.contains("paypal")
-        || lower.contains("braintree")
-        || lower.contains("square")
-    {
-        return "Payment";
-    }
-
-    if lower.contains("google analytics")
-        || lower.contains("gtag")
-        || lower.contains("mixpanel")
-        || lower.contains("segment")
-        || lower.contains("amplitude")
-        || lower.contains("hotjar")
-        || lower.contains("heap")
-        || lower.contains("fullstory")
-        || lower.contains("plausible")
-    {
-        return "Analytics";
-    }
-
-    if lower.contains("wordpress")
-        || lower.contains("drupal")
-        || lower.contains("webflow")
-        || lower.contains("contentful")
-        || lower.contains("strapi")
-    {
-        return "CMS";
-    }
-
-    if lower.contains("supabase")
-        || lower.contains("firebase")
-        || lower.contains("appwrite")
-        || lower.contains("aws")
-        || lower.contains("azure")
-        || lower.contains("gcp")
-    {
-        return "Cloud/BaaS";
-    }
-
-    if lower.contains("jquery")
-        || lower.contains("lodash")
-        || lower.contains("axios")
-        || lower.contains("moment")
-        || lower.contains("tailwind")
-        || lower.contains("bootstrap")
-    {
-        return "Libraries";
-    }
-
-    if lower.contains("redux")
-        || lower.contains("mobx")
-        || lower.contains("zustand")
-        || lower.contains("pinia")
-        || lower.contains("recoil")
-    {
-        return "State Management";
-    }
-
-    if lower.contains("sentry")
-        || lower.contains("datadog")
-        || lower.contains("newrelic")
-        || lower.contains("logr")
-    {
-        return "Monitoring";
-    }
-
     "Other"
 }
 
@@ -150,10 +169,13 @@ pub(crate) fn render_technologies(result: &ScanResult) -> Vec<String> {
     // Render in a stable order
     let category_order = [
         "Frameworks",
+        "Static Site Generators",
+        "Backend",
+        "Infrastructure",
         "Authentication",
         "Payment",
         "Analytics",
-        "CMS",
+        "CMS/Platforms",
         "Cloud/BaaS",
         "Libraries",
         "State Management",
