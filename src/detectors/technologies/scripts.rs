@@ -56,6 +56,11 @@ fn detect_from_url(src: &str, detected: &mut Vec<String>) {
         ("swagger-ui", "Swagger UI"),
         ("redoc.standalone", "ReDoc"),
         ("rapidoc-min", "RapiDoc"),
+        // Auth providers
+        ("accounts.google.com/gsi/", "Google Sign-In"),
+        ("appleid.cdn-apple.com", "Apple Sign-In"),
+        ("connect.facebook.net", "Facebook Login"),
+        ("accounts.google.com/o/oauth2", "Google OAuth"),
         // Additional frameworks
         ("unpkg.com/htmx", "HTMX"),
         ("unpkg.com/alpinejs", "Alpine.js"),

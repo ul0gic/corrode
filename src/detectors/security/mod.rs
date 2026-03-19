@@ -149,7 +149,7 @@ fn is_static_or_framework_url(url: &str, content_type: Option<&String>) -> bool 
     // Static file extensions
     let static_extensions = [
         ".js", ".css", ".png", ".jpg", ".jpeg", ".gif", ".svg", ".ico", ".woff", ".woff2", ".ttf",
-        ".eot", ".map", ".webp", ".avif",
+        ".eot", ".map", ".webp", ".avif", ".mp4", ".webm", ".mp3", ".ogg", ".wav",
     ];
     // Check path portion (strip query string)
     let path = lower.split('?').next().unwrap_or(&lower);
@@ -193,6 +193,8 @@ fn is_static_or_framework_url(url: &str, content_type: Option<&String>) -> bool 
         let ct_lower = ct.to_lowercase();
         if ct_lower.starts_with("font/")
             || ct_lower.starts_with("image/")
+            || ct_lower.starts_with("video/")
+            || ct_lower.starts_with("audio/")
             || ct_lower.contains("application/font")
             || ct_lower.contains("text/css")
             || ct_lower.contains("application/javascript")
