@@ -14,31 +14,41 @@ Built with Rust and chromiumoxide for fast, headless scanning. Corrode performs 
 
 ```
 src/
-├── api/                  # API endpoint discovery (passive extraction from JS)
-├── cli.rs                # CLI definitions
-├── config.rs             # Config normalization and config file loading
+├── api/                      # API endpoint discovery (passive extraction from JS)
+├── cli.rs                    # CLI definitions
+├── config.rs                 # Config normalization and config file loading
 ├── detectors/
-│   ├── patterns/         # Pattern modules: auth, cloud, ai, payment, communication,
-│   │                     #   monitoring, collaboration, vcs, database, infrastructure
-│   ├── secrets.rs        # SecretScanner engine
-│   ├── ast.rs            # SWC-based JavaScript AST analysis
-│   ├── cve.rs            # Next.js CVE version-range detectors
-│   ├── dom.rs            # DOM analysis: forms, hidden inputs, cookies, storage
-│   ├── javascript.rs     # Script extraction, window objects, runtime detection
-│   ├── jwt.rs            # JWT decoding and role classification
-│   └── security.rs       # Cookie/header/CORS security analysis
-├── network/              # Network monitor
+│   ├── collectors/           # Page data extraction
+│   │   ├── ast.rs            #   SWC-based JavaScript AST analysis
+│   │   ├── dom.rs            #   DOM analysis: forms, hidden inputs, cookies, storage
+│   │   └── javascript.rs     #   Script extraction, window objects, version extraction
+│   ├── secrets/              # Credential detection engine
+│   │   ├── jwt.rs            #   JWT decoding and role classification
+│   │   └── patterns/         #   45+ categorized regex patterns (auth, cloud, ai,
+│   │                         #     payment, communication, monitoring, collaboration,
+│   │                         #     vcs, database, infrastructure)
+│   ├── security/             # Security analysis
+│   │   └── mod.rs            #   Cookie, header, CORS, mixed content checks
+│   ├── technologies/         # Technology fingerprinting (4 signal sources)
+│   │   ├── headers.rs        #   HTTP response header signatures
+│   │   ├── meta.rs           #   HTML meta tag generators
+│   │   ├── runtime.rs        #   Window object detection
+│   │   └── scripts.rs        #   Script URLs + network request patterns
+│   └── vulnerabilities/      # Per-framework CVE detection
+│       ├── nextjs.rs         #   5 Next.js CVEs
+│       └── react.rs          #   4 React Server Components CVEs
+├── network/                  # Network monitor
 ├── reporting/
-│   └── markdown/         # Section-based Markdown report: summary, findings,
-│                         #   network, technologies, appendix
+│   └── markdown/             # Section-based Markdown report: summary, findings,
+│                             #   security, network, technologies, appendix
 ├── scanner/
-│   ├── chrome.rs         # Chrome binary resolution
-│   └── workflow.rs       # Browser orchestration and scan workflow
-├── types.rs              # Shared data structures
-└── main.rs               # Entry point
-fixtures/                 # Static fixture pages for local testing
-corrode-output/           # Default output directory (per scan)
-examples/                 # Example configuration files
+│   ├── chrome.rs             # Chrome binary resolution
+│   └── workflow.rs           # Browser orchestration and scan workflow
+├── types.rs                  # Shared data structures
+└── main.rs                   # Entry point
+fixtures/                     # Static fixture pages for local testing
+corrode-output/               # Default output directory (per scan)
+examples/                     # Example configuration files
 ```
 
 ## Architecture
@@ -78,7 +88,7 @@ graph TD
 ### Advanced Analysis
 - **API Endpoint Discovery** - Extracts API endpoints from JavaScript for manual testing
 - **CVE Detection** - Detects React and Next.js vulnerabilities by version fingerprint (9 CVEs)
-- **Technology Detection** - Identifies 40+ frameworks, libraries, and services in use
+- **Technology Detection** - Identifies 60+ frameworks, servers, and services across runtime, headers, meta tags, and network URLs
 - **Version Extraction** - Extracts React and Next.js versions for CVE correlation
 - **DOM Analysis** - Analyzes forms, hidden inputs, iframes, meta tags, and data attributes
 - **Cookie Security Analysis** - Checks for insecure cookie configurations
@@ -326,7 +336,7 @@ Corrode detects React and Next.js vulnerabilities by fingerprinting version stri
 
 ## Security Issue Detection
 - **Insecure Cookies** - Missing Secure, HttpOnly, or SameSite flags
-- **CORS Misconfiguration** - Detects wildcard Access-Control-Allow-Origin headers
+- **CORS Misconfiguration** - Detects wildcard Access-Control-Allow-Origin on first-party endpoints (filters out static assets, framework internals, and CDN resources)
 - **Missing Security Headers** - CSP, HSTS, X-Frame-Options, X-Content-Type-Options
 - **Mixed Content** - HTTP resources loaded on HTTPS pages
 - **Debug Mode Detection** - React development builds, Vue devtools, Angular debug, HMR signals in production
@@ -334,16 +344,19 @@ Corrode detects React and Next.js vulnerabilities by fingerprinting version stri
 
 ### Technology Detection
 
-Corrode automatically identifies 40+ technologies:
+Corrode identifies 60+ technologies across 4 signal sources (runtime objects, HTTP headers, meta tags, script/network URLs):
 
-**Frameworks**: React, Vue.js, Angular, Svelte, Solid.js, Next.js, Nuxt.js, Remix, Gatsby
+**Frontend Frameworks**: React, Vue.js, Angular, Svelte, Solid.js, Next.js (Pages/App Router), Nuxt.js, Remix, Gatsby, HTMX, Alpine.js, Livewire
+**Backend/Servers**: Express, Koa, Fastify, Axum, Actix, Warp, Hyper, Werkzeug, Tornado, Puma, Phoenix, Gin, Fiber, Echo, NestJS, AdonisJS, Sails.js
 **Backend-as-a-Service**: Supabase, Firebase, Appwrite, AWS Cognito
-**Authentication**: Auth0, Clerk, Okta
+**Authentication**: Auth0, Clerk, Okta, Google Sign-In, Apple Sign-In, Facebook Login, Google OAuth
 **Payment**: Stripe, PayPal, Square, Braintree
-**Analytics**: Google Analytics, Mixpanel, Segment, Amplitude, HubSpot
-**CMS**: WordPress, Drupal, Webflow, Contentful, Sanity
-**Libraries**: jQuery, Bootstrap, Tailwind CSS, Material-UI
-**State Management**: Redux, MobX, Zustand, Apollo Client, Relay
+**Analytics**: Google Analytics, GTM, Mixpanel, Segment, Amplitude, Heap, Hotjar, HubSpot
+**CMS**: WordPress, Drupal, Webflow, TYPO3, Craft CMS, Strapi
+**API Docs**: Swagger UI, ReDoc, RapiDoc
+**State Management**: Redux, Zustand, React Query, TanStack Router, Apollo Client, Relay
+**Cloud/Platform**: Vercel, Cloudflare
+**Monitoring**: Sentry, Intercom
 
 ## Disclaimer
 
