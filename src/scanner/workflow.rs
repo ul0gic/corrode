@@ -10,17 +10,17 @@ use tokio::time;
 
 use crate::config::{Config, OutputFormat};
 use crate::detectors::{
-    cve,
     dom::{self, DomArtifacts},
     javascript::{self, ScriptArtifacts},
     secrets::SecretScanner,
     security::analyze_security,
+    technologies, vulnerabilities,
 };
 use crate::network::monitor::NetworkMonitor;
 use crate::reporting::{json as json_report, markdown};
 use crate::scanner::chrome::resolve_chrome_binary;
 use crate::scanner::page_utils;
-use crate::types::{ApiCall, DomAnalysis, JavaScriptAnalysis, MetaTag, NetworkAnalysis, ScanResult};
+use crate::types::{DomAnalysis, JavaScriptAnalysis, NetworkAnalysis, ScanResult};
 use chromiumoxide::browser::{Browser, BrowserConfig};
 
 /// Tracks per-URL scan outcomes for the batch summary.
@@ -425,12 +425,11 @@ async fn scan_url(
 
     let ScriptArtifacts {
         script_count,
+        scripts_array,
         mut source_maps,
         window_objects,
         debug_flags,
         api_endpoints,
-        mut technologies,
-        technology_versions,
         ast_findings,
         vulnerabilities: script_vulns,
     } = script_data;
@@ -445,9 +444,8 @@ async fn scan_url(
     source_maps.extend(header_source_maps);
     let api_calls_list = network_monitor.get_api_calls().await;
 
-    // Enrich technologies from response headers and meta tags
-    enrich_technologies_from_headers(&all_calls, &mut technologies);
-    enrich_technologies_from_meta(&meta_tags, &mut technologies);
+    // Technology detection — all sources, one module
+    let tech = technologies::detect_all(&page, &all_calls, &meta_tags, &scripts_array).await;
 
     let api_call_urls: Vec<String> = api_calls_list.iter().map(|c| c.url.clone()).collect();
     let third_party: Vec<String> = all_calls
@@ -468,12 +466,9 @@ async fn scan_url(
         );
     }
 
-    let (mut vulnerabilities, security) = analyze_security(&raw_cookies, &all_calls, &url);
-    vulnerabilities.extend(script_vulns);
-
-    // Run version-dependent CVE checks against detected technology versions
-    let cve_vulns = cve::check_nextjs_cves(&technology_versions);
-    vulnerabilities.extend(cve_vulns);
+    let (mut all_vulns, security) = analyze_security(&raw_cookies, &all_calls, &url);
+    all_vulns.extend(script_vulns);
+    all_vulns.extend(vulnerabilities::check_all(&tech.versions));
 
     let result = ScanResult {
         url: url.clone(),
@@ -508,9 +503,9 @@ async fn scan_url(
             ast_findings,
         },
         security,
-        technologies,
-        technology_versions,
-        vulnerabilities,
+        technologies: tech.technologies,
+        technology_versions: tech.versions,
+        vulnerabilities: all_vulns,
         comments,
         api_tests: vec![],
         success: true,
@@ -522,95 +517,4 @@ async fn scan_url(
     }
 
     Ok(result)
-}
-
-/// Detect technologies from HTTP response headers (server, x-powered-by, via).
-fn enrich_technologies_from_headers(calls: &[ApiCall], technologies: &mut Vec<String>) {
-    for call in calls {
-        if let Some(server) = call.response_headers.get("server") {
-            let lower = server.to_lowercase();
-            let detections: &[(&str, &str)] = &[
-                ("cloudflare", "Cloudflare"),
-                ("nginx", "nginx"),
-                ("apache", "Apache"),
-                ("vercel", "Vercel"),
-                ("netlify", "Netlify"),
-                ("flyio", "Fly.io"),
-                ("deno", "Deno Deploy"),
-                ("caddy", "Caddy"),
-                ("microsoft-iis", "IIS"),
-                ("openresty", "OpenResty"),
-                ("envoy", "Envoy"),
-                ("cowboy", "Cowboy"),
-                ("gunicorn", "Gunicorn"),
-            ];
-            for (pattern, name) in detections {
-                if lower.contains(pattern) && !technologies.contains(&(*name).to_owned()) {
-                    technologies.push((*name).to_owned());
-                }
-            }
-        }
-
-        if let Some(powered) = call.response_headers.get("x-powered-by") {
-            let lower = powered.to_lowercase();
-            let detections: &[(&str, &str)] = &[
-                ("express", "Express"),
-                ("asp.net", "ASP.NET"),
-                ("php", "PHP"),
-                ("next.js", "Next.js"),
-                ("nuxt", "Nuxt.js"),
-                ("flask", "Flask"),
-                ("django", "Django"),
-                ("rails", "Ruby on Rails"),
-                ("fastify", "Fastify"),
-                ("hapi", "Hapi"),
-                ("koa", "Koa"),
-            ];
-            for (pattern, name) in detections {
-                if lower.contains(pattern) && !technologies.contains(&(*name).to_owned()) {
-                    technologies.push((*name).to_owned());
-                }
-            }
-        }
-    }
-}
-
-/// Detect technologies from HTML meta tags (generator, framework markers).
-fn enrich_technologies_from_meta(meta_tags: &[MetaTag], technologies: &mut Vec<String>) {
-    for tag in meta_tags {
-        let name_lower = tag.name.to_lowercase();
-
-        // <meta name="generator" content="Astro v4.x">
-        if name_lower == "generator" {
-            let content = &tag.content;
-            let detections: &[(&str, &str)] = &[
-                ("astro", "Astro"),
-                ("wordpress", "WordPress"),
-                ("drupal", "Drupal"),
-                ("hugo", "Hugo"),
-                ("jekyll", "Jekyll"),
-                ("gatsby", "Gatsby"),
-                ("next.js", "Next.js"),
-                ("nuxt", "Nuxt.js"),
-                ("ghost", "Ghost"),
-                ("eleventy", "Eleventy"),
-                ("hexo", "Hexo"),
-                ("docusaurus", "Docusaurus"),
-                ("vuepress", "VuePress"),
-                ("mkdocs", "MkDocs"),
-                ("pelican", "Pelican"),
-                ("joomla", "Joomla"),
-                ("wix.com", "Wix"),
-                ("squarespace", "Squarespace"),
-                ("shopify", "Shopify"),
-                ("webflow", "Webflow"),
-            ];
-            let content_lower = content.to_lowercase();
-            for (pattern, name) in detections {
-                if content_lower.contains(pattern) && !technologies.contains(&(*name).to_owned()) {
-                    technologies.push((*name).to_owned());
-                }
-            }
-        }
-    }
 }
