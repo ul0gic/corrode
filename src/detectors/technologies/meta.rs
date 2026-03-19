@@ -23,6 +23,10 @@ const GENERATOR_SIGNATURES: &[(&str, &str)] = &[
     ("shopify", "Shopify"),
     ("webflow", "Webflow"),
     ("svelte", "SvelteKit"),
+    ("remix", "Remix"),
+    ("typo3", "TYPO3"),
+    ("craft cms", "Craft CMS"),
+    ("strapi", "Strapi"),
 ];
 
 /// Detect technologies from HTML `<meta>` tags.

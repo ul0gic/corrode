@@ -37,6 +37,12 @@ pub async fn detect(page: &Page) -> Vec<String> {
                 { name: 'Mixpanel', test: () => !!window.mixpanel },
                 { name: 'Redux', test: () => !!window.__REDUX_DEVTOOLS_EXTENSION__ },
                 { name: 'Apollo Client', test: () => !!window.__APOLLO_STATE__ || !!window.__APOLLO_CLIENT__ },
+                { name: 'React Query', test: () => !!window.__REACT_QUERY_DEVTOOLS_GLOBAL_HOOK__ || !!window.__REACT_QUERY_STATE__ },
+                { name: 'TanStack Router', test: () => !!window.__TSR__ || !!window.__TSR_DEHYDRATED__ },
+                { name: 'Zustand', test: () => !!window.__ZUSTAND_DEVTOOLS__ },
+                { name: 'HTMX', test: () => !!window.htmx },
+                { name: 'Alpine.js', test: () => !!window.Alpine },
+                { name: 'Livewire', test: () => !!window.Livewire },
             ];
             checks.forEach(check => {
                 try {

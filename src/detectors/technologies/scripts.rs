@@ -43,6 +43,14 @@ fn detect_from_url(src: &str, detected: &mut Vec<String>) {
         // Cloud/platform
         ("cloudflareinsights.com", "Cloudflare"),
         ("static.cloudflareinsights.com", "Cloudflare"),
+        // API documentation
+        ("swagger-ui", "Swagger UI"),
+        ("redoc.standalone", "ReDoc"),
+        ("rapidoc-min", "RapiDoc"),
+        // Additional frameworks
+        ("unpkg.com/htmx", "HTMX"),
+        ("unpkg.com/alpinejs", "Alpine.js"),
+        ("cdn.jsdelivr.net/npm/alpinejs", "Alpine.js"),
     ];
 
     for (pattern, name) in url_signatures {

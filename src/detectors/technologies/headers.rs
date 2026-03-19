@@ -19,6 +19,15 @@ const SERVER_SIGNATURES: &[(&str, &str)] = &[
     ("kestrel", "Kestrel"),
     ("lighttpd", "lighttpd"),
     ("litespeed", "LiteSpeed"),
+    ("axum", "Axum"),
+    ("actix", "Actix"),
+    ("warp", "Warp"),
+    ("hyper", "Hyper"),
+    ("werkzeug", "Werkzeug"),
+    ("tornado", "Tornado"),
+    ("puma", "Puma"),
+    ("thin", "Thin"),
+    ("unicorn", "Unicorn"),
 ];
 
 /// Backend framework signatures detected from `x-powered-by`.
@@ -37,6 +46,13 @@ const POWERED_BY_SIGNATURES: &[(&str, &str)] = &[
     ("laravel", "Laravel"),
     ("symfony", "Symfony"),
     ("spring", "Spring"),
+    ("phoenix", "Phoenix"),
+    ("gin", "Gin"),
+    ("fiber", "Fiber"),
+    ("echo", "Echo"),
+    ("nestjs", "NestJS"),
+    ("adonisjs", "AdonisJS"),
+    ("sails", "Sails.js"),
 ];
 
 /// Detect technologies from HTTP response headers across all captured requests.
