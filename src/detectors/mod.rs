@@ -1,8 +1,4 @@
-pub mod ast;
-pub mod dom;
-pub mod javascript;
-pub mod jwt;
-pub mod patterns;
+pub mod collectors;
 pub mod secrets;
 pub mod security;
 pub mod technologies;

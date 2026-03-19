@@ -3,6 +3,9 @@
 #![allow(clippy::unwrap_used)]
 #![allow(clippy::non_std_lazy_statics)]
 
+mod jwt;
+pub mod patterns;
+
 use lazy_static::lazy_static;
 use regex::Regex;
 use std::collections::{HashMap, HashSet};
@@ -10,11 +13,11 @@ use std::sync::Arc;
 use tokio::sync::Mutex;
 
 use crate::config::CustomPattern;
-use crate::detectors::jwt::{is_anon_jwt, is_service_role_jwt};
+use self::jwt::{is_anon_jwt, is_service_role_jwt};
 use crate::types::{Comment, SecretFinding};
 
 lazy_static! {
-    pub static ref SECRET_PATTERNS: HashMap<&'static str, Regex> = super::patterns::all_patterns();
+    pub static ref SECRET_PATTERNS: HashMap<&'static str, Regex> = self::patterns::all_patterns();
     static ref COMMENT_SINGLE: Regex = Regex::new(r"//(.+)").unwrap();
     static ref COMMENT_MULTI: Regex = Regex::new(r"/\*([\s\S]*?)\*/").unwrap();
 }

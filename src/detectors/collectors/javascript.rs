@@ -8,7 +8,8 @@ use tokio::time::{self, Duration};
 use url::Url;
 
 use crate::api::discovery::extract_api_endpoints;
-use crate::detectors::{ast, secrets::SecretScanner, vulnerabilities};
+use super::ast;
+use crate::detectors::{secrets::SecretScanner, vulnerabilities};
 use crate::scanner::page_utils;
 use crate::types::{AstFinding, DiscoveredEndpoint, Vulnerability};
 

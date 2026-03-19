@@ -10,8 +10,10 @@ use tokio::time;
 
 use crate::config::{Config, OutputFormat};
 use crate::detectors::{
-    dom::{self, DomArtifacts},
-    javascript::{self, ScriptArtifacts},
+    collectors::{
+        dom::{self, DomArtifacts},
+        javascript::{self, ScriptArtifacts},
+    },
     secrets::SecretScanner,
     security::analyze_security,
     technologies, vulnerabilities,
