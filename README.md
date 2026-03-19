@@ -4,6 +4,9 @@
 
 Built with Rust and chromiumoxide for fast, headless scanning. Corrode performs passive analysis only — no active exploitation or fuzzing. Use its output to inform manual penetration testing and security assessments.
 
+[![CI](https://github.com/ul0gic/corrode/actions/workflows/ci.yml/badge.svg)](https://github.com/ul0gic/corrode/actions/workflows/ci.yml)
+[![crates.io](https://img.shields.io/crates/v/corrode-scanner.svg)](https://crates.io/crates/corrode-scanner)
+[![Downloads](https://img.shields.io/crates/d/corrode-scanner.svg)](https://crates.io/crates/corrode-scanner)
 [![Rust](https://img.shields.io/badge/rust-1.70%2B-orange.svg)](https://www.rust-lang.org/)
 [![License: AGPL v3](https://img.shields.io/badge/license-AGPL--3.0-blue.svg)](LICENSE)
 
@@ -40,8 +43,6 @@ examples/                 # Example configuration files
 
 ## Architecture
 
-### High-Level Architecture
-
 ```mermaid
 graph TD
     A[URL / URL File] --> B[Headless Chrome/Chromium]
@@ -61,53 +62,6 @@ graph TD
 
     classDef purple fill:#e9d5ff,stroke:#7c3aed,stroke-width:2px,color:#000
     class A,B,C,D,E,F,G,H,I,J,Results purple
-```
-
-### Scanning Workflow
-
-```mermaid
-graph TD
-    U[User Input] --> CLI[CLI Parser]
-    CLI --> CF[Config File]
-    CF --> B[Headless Browser]
-    B --> N[Network Tracking]
-    B --> S[HTML/Script Extraction]
-    S --> SC[Secret Scanner]
-    S --> CV[CVE Detector]
-    N --> SEC[Security Analysis]
-    SC --> R[Reporter]
-    CV --> R
-    SEC --> R
-    N --> R
-    R --> OUT[JSON / Markdown Output]
-
-    classDef green fill:#d1fae5,stroke:#059669,stroke-width:2px,color:#000
-    class U,CLI,CF,B,N,S,SC,CV,SEC,R,OUT green
-```
-
-### Secret Detection Pipeline
-
-```mermaid
-graph TD
-    S1[HTML Content] --> P[Pattern Matching]
-    S2[Inline Scripts] --> P
-    S3[External Scripts] --> P
-    S4[Hidden Inputs] --> P
-    S5[localStorage/sessionStorage] --> P
-    S6[Window Objects] --> P
-    S7[Cookies] --> P
-    P --> D1[Regex Patterns]
-    P --> D2[JWT Decoder]
-    P --> D3[Base64 Decoder]
-    D1 --> R[Extract & Classify]
-    D2 --> R
-    D3 --> R
-    R --> F1[Secret Findings]
-    R --> F2[Source Location]
-    R --> F3[Severity Level]
-
-    classDef blue fill:#dbeafe,stroke:#2563eb,stroke-width:2px,color:#000
-    class S1,S2,S3,S4,S5,S6,S7,P,D1,D2,D3,R,F1,F2,F3 blue
 ```
 
 ## Features
@@ -146,7 +100,7 @@ For local development (from source):
 git clone https://github.com/ul0gic/corrode.git
 cd corrode
 cargo build --release
-./target/release/corrode --url https://example.com
+./target/release/corrode-scanner --url https://example.com
 ```
 
 ### Requirements
@@ -161,9 +115,9 @@ cargo build --release
 
 **Linux (Debian/Ubuntu):**
 ```bash
-wget -qO - https://dl.google.com/linux/linux_signing_key.pub | sudo apt-key add -
-sudo sh -c 'echo "deb [arch=amd64] http://dl.google.com/linux/chrome/deb/ stable main" >> /etc/apt/sources.list.d/google-chrome.list'
-sudo apt update && sudo apt install google-chrome-stable
+wget -q -O - https://dl.google.com/linux/linux_signing_key.pub | sudo gpg --dearmor -o /usr/share/keyrings/google-chrome.gpg
+echo "deb [arch=amd64 signed-by=/usr/share/keyrings/google-chrome.gpg] http://dl.google.com/linux/chrome/deb/ stable main" | sudo tee /etc/apt/sources.list.d/google-chrome.list
+sudo apt update && sudo apt install -y google-chrome-stable
 ```
 
 **macOS:**
@@ -195,37 +149,37 @@ Chrome is auto-detected via PATH and common install locations. Override with `--
 
 Single target:
 ```bash
-corrode --url https://example.com
+corrode-scanner --url https://example.com
 ```
 
 Batch scan from a file:
 ```bash
-corrode --file targets.txt
+corrode-scanner --file targets.txt
 ```
 
 Custom output directory and timeout:
 ```bash
-corrode --url https://example.com -o recon-$(date +%Y%m%d) -t 60 -v
+corrode-scanner --url https://example.com -o recon-$(date +%Y%m%d) -t 60 -v
 ```
 
-JSON output for pipeline integration:
+JSON output only:
 ```bash
-corrode --url https://example.com --format json
+corrode-scanner --url https://example.com --format json
 ```
 
 Explicit Chrome binary override:
 ```bash
-corrode --url https://example.com --chrome-bin "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
+corrode-scanner --url https://example.com --chrome-bin "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
 ```
 
 Use a specific config file:
 ```bash
-corrode --url https://example.com --config /path/to/corrode.toml
+corrode-scanner --url https://example.com --config /path/to/corrode.toml
 ```
 
 Skip config file entirely:
 ```bash
-corrode --url https://example.com --no-config
+corrode-scanner --url https://example.com --no-config
 ```
 
 ### Batch Scanning (`--file`)
@@ -243,7 +197,7 @@ https://staging.example.com
 
 Scan all targets:
 ```bash
-corrode --file targets.txt -o pentest-$(date +%Y%m%d)
+corrode-scanner --file targets.txt -o pentest-$(date +%Y%m%d)
 ```
 
 Corrode scans each URL in sequence, continues past failures, and writes a `SUMMARY.md` in the output root with per-target finding counts.
