@@ -17,7 +17,7 @@ categories = [
 ]
 
 [dependencies]
-chromiumoxide = "0.6.0"
+chromiumoxide = "0.9.1"
 tokio = { version = "1", features = ["full"] }
 futures = "0.3"
 regex = "1.10"
