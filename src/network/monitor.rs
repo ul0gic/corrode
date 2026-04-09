@@ -1,7 +1,7 @@
 use crate::types::ApiCall;
 use chromiumoxide::cdp::browser_protocol::network::{
     EnableParams, EventLoadingFinished, EventRequestWillBeSent, EventResponseReceived,
-    GetResponseBodyParams,
+    GetResponseBodyParams, PostDataEntry,
 };
 use chromiumoxide::Page;
 use futures::StreamExt;
@@ -59,7 +59,7 @@ impl NetworkMonitor {
                         request_headers: HashMap::new(),
                         response_headers: HashMap::new(),
                         response_content_type: None,
-                        request_body: request.post_data.clone(),
+                        request_body: extract_post_data(request.post_data_entries.as_ref()),
                         response_body: None,
                         response_size: 0,
                     });
@@ -67,7 +67,7 @@ impl NetworkMonitor {
                     entry.url.clone_from(&request.url);
                     entry.method.clone_from(&request.method);
                     entry.request_headers = headers_to_map(&request.headers);
-                    entry.request_body.clone_from(&request.post_data);
+                    entry.request_body = extract_post_data(request.post_data_entries.as_ref());
                 }
             });
         }
@@ -215,4 +215,19 @@ fn header_value<'a>(headers: &'a HashMap<String, String>, key: &str) -> Option<&
         .iter()
         .find(|(k, _)| k.eq_ignore_ascii_case(key))
         .map(|(_, v)| v.as_str())
+}
+
+/// Reconstruct the request body from CDP's `postDataEntries` (replaces the
+/// removed `postData` field in newer CDP versions).
+fn extract_post_data(entries: Option<&Vec<PostDataEntry>>) -> Option<String> {
+    let entries = entries?;
+    let combined: String = entries
+        .iter()
+        .filter_map(|e| e.bytes.as_ref().map(AsRef::<str>::as_ref))
+        .collect();
+    if combined.is_empty() {
+        None
+    } else {
+        Some(combined)
+    }
 }

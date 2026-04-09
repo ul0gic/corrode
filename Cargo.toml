@@ -17,7 +17,7 @@ categories = [
 ]
 
 [dependencies]
-chromiumoxide = "0.6.0"
+chromiumoxide = "0.9.1"
 tokio = { version = "1", features = ["full"] }
 futures = "0.3"
 regex = "1.10"
@@ -33,7 +33,7 @@ lazy_static = "1.4"
 base64 = "0.22"
 swc_common = "19.0"
 swc_ecma_ast = "21.0"
-swc_ecma_parser = { version = "35.0", features = ["typescript"] }
+swc_ecma_parser = { version = "36.0", features = ["typescript"] }
 swc_ecma_visit = "21.0"
 toml = "0.8"
 dirs = "5"
