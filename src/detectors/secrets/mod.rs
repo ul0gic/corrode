@@ -12,8 +12,8 @@ use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use tokio::sync::Mutex;
 
-use crate::config::CustomPattern;
 use self::jwt::{is_anon_jwt, is_service_role_jwt};
+use crate::config::CustomPattern;
 use crate::types::{Comment, SecretFinding};
 
 lazy_static! {
