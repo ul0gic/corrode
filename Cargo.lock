@@ -380,7 +380,7 @@ dependencies = [
  "reqwest 0.12.24",
  "serde",
  "serde_json",
- "swc_common",
+ "swc_common 21.0.1",
  "swc_ecma_ast",
  "swc_ecma_parser",
  "swc_ecma_visit",
@@ -1878,6 +1878,31 @@ dependencies = [
 ]
 
 [[package]]
+name = "swc_common"
+version = "21.0.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "078f2144aa2c33ff8485773f1b81b9985fa2d00f4ad60879158ad6897db2de88"
+dependencies = [
+ "anyhow",
+ "ast_node",
+ "better_scoped_tls",
+ "bytes-str",
+ "either",
+ "from_variant",
+ "num-bigint",
+ "once_cell",
+ "rustc-hash",
+ "serde",
+ "siphasher 0.3.11",
+ "swc_atoms",
+ "swc_eq_ignore_macros",
+ "swc_visit",
+ "tracing",
+ "unicode-width",
+ "url",
+]
+
+[[package]]
 name = "swc_ecma_ast"
 version = "21.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1891,7 +1916,7 @@ dependencies = [
  "rustc-hash",
  "string_enum",
  "swc_atoms",
- "swc_common",
+ "swc_common 19.0.0",
  "swc_visit",
  "unicode-id-start",
 ]
@@ -1912,7 +1937,7 @@ dependencies = [
  "smartstring",
  "stacker",
  "swc_atoms",
- "swc_common",
+ "swc_common 19.0.0",
  "swc_ecma_ast",
  "tracing",
 ]
@@ -1926,7 +1951,7 @@ dependencies = [
  "new_debug_unreachable",
  "num-bigint",
  "swc_atoms",
- "swc_common",
+ "swc_common 19.0.0",
  "swc_ecma_ast",
  "swc_visit",
  "tracing",

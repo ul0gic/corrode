@@ -31,7 +31,7 @@ reqwest = { version = "0.12", features = ["json"] }
 chrono = "0.4"
 lazy_static = "1.4"
 base64 = "0.22"
-swc_common = "19.0"
+swc_common = "21.0"
 swc_ecma_ast = "21.0"
 swc_ecma_parser = { version = "36.0", features = ["typescript"] }
 swc_ecma_visit = "21.0"
