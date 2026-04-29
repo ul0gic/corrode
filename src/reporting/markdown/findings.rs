@@ -1,3 +1,5 @@
+use std::cmp::Reverse;
+
 use crate::types::{ApiTestResult, ScanResult};
 
 use super::summary::{redact_value, secret_severity, severity_rank, truncate_middle};
@@ -59,7 +61,7 @@ pub(crate) fn render_secrets(result: &ScanResult) -> Vec<String> {
     }
 
     // Sort by severity (critical first)
-    findings.sort_by(|a, b| severity_rank(&b.severity).cmp(&severity_rank(&a.severity)));
+    findings.sort_by_key(|f| Reverse(severity_rank(&f.severity)));
 
     // Render by severity section
     for sev in &["CRITICAL", "HIGH", "MEDIUM", "LOW", "INFO"] {
