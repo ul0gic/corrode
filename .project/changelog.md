@@ -10,6 +10,24 @@
 
 ---
 
+## [0.3.2] — 2026-04-29
+
+### Security
+
+- **rustls-webpki** 0.103.10 → 0.103.13 — fixes DoS via panic on malformed CRL BIT STRING (HIGH), name constraint issues with URIs and wildcards (LOW)
+- **openssl** 0.10.74 → 0.10.78 — fixes buffer overflow in `Deriver::derive`, incorrect bounds in AES key wrap, unchecked callback length leaking memory, `MdCtxRef::digest_final()` writing past buffer (4x HIGH), out-of-bounds read in PEM callback (LOW)
+- **rand** 0.8.5 → 0.8.6 — fixes unsoundness with custom logger using `rand::rng()` (LOW)
+
+### Changed
+
+- **SWC ecosystem** upgraded: swc_common 19→21, swc_ecma_ast 21→23, swc_ecma_parser 36→39, swc_ecma_visit 21→23
+- **tokio** 1.48 → 1.52
+- **dirs** 5.0 → 6.0
+- **Clippy compliance**: `sort_by` replaced with `sort_by_key` + `Reverse` in findings renderer
+- **CI actions** updated: actions/upload-artifact 7.0→7.0.1, actions/cache 5.0.4→5.0.5, softprops/action-gh-release 2.6→3.0
+
+---
+
 ## [0.3.0] — 2026-03-19
 
 ### Added
@@ -199,8 +217,9 @@
 | 0.1.0   | Foundation: headless scanning, 30+ patterns, JSON+MD output | – |
 | 0.2.0   | Detection Expansion: 45+ patterns, 9 CVEs, runtime detection | 2026-03-18 |
 | 0.3.0   | Modular Architecture: detector restructuring, expanded tech fingerprinting, false positive fixes | 2026-03-19 |
+| 0.3.2   | Security patch: 9 dependency vulnerabilities fixed, SWC ecosystem upgrade | 2026-04-29 |
 | 1.0.0   | Public Release | TBD |
 
 ---
 
-*Last updated: 2026-03-19*
+*Last updated: 2026-04-29*
