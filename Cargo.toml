@@ -35,7 +35,7 @@ swc_common = "21.0"
 swc_ecma_ast = "23.0"
 swc_ecma_parser = { version = "39.0", features = ["typescript"] }
 swc_ecma_visit = "23.0"
-toml = "0.8"
+toml = "1.1"
 dirs = "6"
 
 [lints.clippy]
