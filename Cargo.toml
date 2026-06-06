@@ -1,6 +1,6 @@
 [package]
 name = "corrode-scanner"
-version = "0.3.3"
+version = "0.3.4"
 edition = "2021"
 authors = ["ul0gic"]
 description = "Passive web reconnaissance tool for extracting secrets, credentials, and security data"
@@ -14,6 +14,13 @@ categories = [
     "command-line-utilities",
     "development-tools::testing",
     "web-programming"
+]
+exclude = [
+    ".claude/",
+    ".project/",
+    ".github/",
+    "fixtures/",
+    "tests/",
 ]
 
 [dependencies]
