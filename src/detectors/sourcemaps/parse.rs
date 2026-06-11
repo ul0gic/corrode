@@ -177,4 +177,73 @@ mod tests {
         let map = parse(json).expect("valid map");
         assert!(!map.sources[0].ignored);
     }
+
+    // --- Fixture-backed coverage (task 1.12) ---
+
+    const FIXTURE_WITH_CONTENT: &str = r#"{
+  "version": 3,
+  "file": "main.js",
+  "sourceRoot": "",
+  "sources": [
+    "webpack://_N_E/./src/app/page.tsx",
+    "webpack://_N_E/./src/app/admin/[id]/route.ts",
+    "webpack://_N_E/./src/utils/api.ts",
+    "webpack://_N_E/./node_modules/.pnpm/next@14.1.0/dist/client.js"
+  ],
+  "sourcesContent": [
+    "export default function Page() { return null; }",
+    "export async function GET(req) { /* TODO: add authz check */ return Response.json({}); }",
+    "export const API_BASE = '/api/internal';",
+    "module.exports = {};"
+  ],
+  "names": ["Page", "GET", "API_BASE"],
+  "x_google_ignoreList": [3]
+}
+"#;
+    const FIXTURE_FILENAMES_ONLY: &str = r#"{
+  "version": 3,
+  "file": "vendor.js",
+  "sources": [
+    "webpack://app/./src/routes/login.ts",
+    "webpack://app/./src/routes/dashboard/index.ts"
+  ],
+  "names": []
+}
+"#;
+    const FIXTURE_TRUNCATED: &str = r#"{
+  "version": 3,
+  "file": "broken.js",
+  "sources": ["webpack://app/./src/app/page.tsx"],
+  "sourcesContent": ["export default function Page() { ret
+"#;
+
+    #[test]
+    fn fixture_with_content_recovers_source_text_and_skips_vendor() {
+        let map = parse(FIXTURE_WITH_CONTENT).expect("valid fixture map");
+        assert!(map.has_sources_content());
+        // The pnpm vendor entry is flagged via x_google_ignoreList.
+        let first_party: Vec<_> = map.first_party_with_content().collect();
+        assert_eq!(first_party.len(), 3);
+        assert!(first_party
+            .iter()
+            .all(|s| !s.path.contains(".pnpm") && !s.path.contains("node_modules")));
+        assert!(first_party
+            .iter()
+            .any(|s| s.content.as_deref().is_some_and(|c| c.contains("TODO"))));
+    }
+
+    #[test]
+    fn fixture_filenames_only_has_no_source_text() {
+        let map = parse(FIXTURE_FILENAMES_ONLY).expect("valid fixture map");
+        assert!(!map.has_sources_content());
+        assert_eq!(map.source_paths().len(), 2);
+        assert!(map.sources.iter().all(|s| s.content.is_none()));
+    }
+
+    #[test]
+    fn fixture_truncated_map_fails_gracefully() {
+        // A cut-off map must surface as a parse error, never a panic, so the
+        // caller can log-and-skip it.
+        assert!(parse(FIXTURE_TRUNCATED).is_err());
+    }
 }

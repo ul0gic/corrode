@@ -297,4 +297,27 @@ mod tests {
         let vulns = detect(&[], &no_windows());
         assert!(vulns.is_empty());
     }
+
+    // --- Fixture-backed coverage (task 1.12) ---
+
+    const FIXTURE_NEXT_FLIGHT: &str = r#"(self.__next_f = self.__next_f || []).push([1, "1:HL[\"/_next/static/css/app.css\",\"style\"]\n"]);
+self.__next_f.push([1, "2:[[\"$\",\"html\",null,{\"children\":[\"$\",\"body\",null,{}]}]]\n"]);
+self.__next_f.push([1, "3:I[\"react-server-dom-webpack/client\",[],\"\"]\n"]);
+"#;
+
+    #[test]
+    fn fixture_flight_stream_fingerprints_app_router_surface() {
+        let scripts = [(FIXTURE_NEXT_FLIGHT, "https://app.example.com/page.js")];
+        let surface = fingerprint(&scripts, &no_windows());
+        assert!(surface.flight_markers);
+        assert!(surface.app_router);
+        // The fixture references the server-dom bridge but pins no version.
+        assert!(surface.server_dom);
+
+        // Surface present, version unknown => exactly one inferred advisory.
+        let vulns = detect(&scripts, &no_windows());
+        assert_eq!(vulns.len(), 1);
+        assert_eq!(vulns[0].severity, "info");
+        assert!(vulns[0].description.starts_with("inferred:"));
+    }
 }

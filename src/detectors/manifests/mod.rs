@@ -188,4 +188,68 @@ mod tests {
         assert!(report.routes.iter().any(|r| r.path == "/n"));
         assert!(report.routes.iter().any(|r| r.path == "/nuxt"));
     }
+
+    // --- Fixture-backed coverage (task 1.12) ---
+
+    const FIXTURE_NEXT_BUILD: &str = r#"{
+  "/": ["static/chunks/pages/index.js"],
+  "/admin": ["static/chunks/pages/admin.js"],
+  "/admin/billing": ["static/chunks/pages/admin/billing.js"],
+  "/users/[id]": ["static/chunks/pages/users/[id].js"],
+  "/api/login": ["static/chunks/pages/api/login.js"]
+}
+"#;
+    const FIXTURE_REMIX_CONTEXT: &str = r#"{
+  "manifest": {
+    "routes": {
+      "root": { "id": "root", "path": "", "parentId": null },
+      "routes/login": { "id": "routes/login", "path": "login", "parentId": "root" },
+      "routes/dashboard": { "id": "routes/dashboard", "path": "dashboard", "parentId": "root" },
+      "routes/dashboard.settings": {
+        "id": "routes/dashboard.settings",
+        "path": "settings",
+        "parentId": "routes/dashboard"
+      }
+    }
+  }
+}
+"#;
+
+    #[test]
+    fn fixture_next_build_manifest_recovers_routes() {
+        let w = windows(&[(BUILD_MANIFEST, FIXTURE_NEXT_BUILD)]);
+        let report = analyze(&w, &["Next.js".to_owned()], &[], &[]);
+        let paths: std::collections::HashSet<_> =
+            report.routes.iter().map(|r| r.path.as_str()).collect();
+        assert!(paths.contains("/admin"));
+        assert!(paths.contains("/admin/billing"));
+        // Dynamic + API classification survive the real-shaped manifest.
+        assert!(report
+            .routes
+            .iter()
+            .any(|r| r.path == "/users/[id]" && r.dynamic));
+        // The build-manifest parser surfaces every key as a route template; it
+        // does not sub-classify api paths (that distinction lives in source-map intel).
+        assert!(paths.contains("/api/login"));
+    }
+
+    #[test]
+    fn fixture_remix_context_recovers_nested_routes() {
+        let w = windows(&[(REMIX_CONTEXT, FIXTURE_REMIX_CONTEXT)]);
+        let report = analyze(&w, &["Remix".to_owned()], &[], &[]);
+        let paths: std::collections::HashSet<_> =
+            report.routes.iter().map(|r| r.path.as_str()).collect();
+        assert!(paths.contains("/login"));
+        // Nested parentId chain resolves to a full path.
+        assert!(paths.contains("/dashboard/settings"));
+    }
+
+    #[test]
+    fn fixture_unparseable_manifest_degrades_without_panic() {
+        // A truncated/garbage global must yield no routes, never a panic.
+        let w = windows(&[(BUILD_MANIFEST, r#"{"/admin": ["chunk.js"}"#)]);
+        let report = analyze(&w, &["Next.js".to_owned()], &[], &[]);
+        assert!(report.routes.is_empty());
+        assert!(report.manifests.is_empty());
+    }
 }

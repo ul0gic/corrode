@@ -4,6 +4,11 @@ mod network;
 mod security;
 mod summary;
 mod technologies;
+// Pillar-1 renderer (task 1.10). Declared test-only so it compiles and its tests
+// run, but stays out of the live report until Gate 1 wires `render_sourcemap_intel`
+// into `write` below.
+#[cfg(test)]
+mod sourcemaps;
 
 use anyhow::Result;
 use std::fs;

@@ -203,4 +203,48 @@ mod tests {
         let paths = vec!["src/app@home.ts".to_owned()];
         assert!(extract_versions(&paths).is_empty());
     }
+
+    // --- Fixture-backed coverage (task 1.12) ---
+
+    const FIXTURE_WITH_CONTENT: &str = r#"{
+  "version": 3,
+  "file": "main.js",
+  "sourceRoot": "",
+  "sources": [
+    "webpack://_N_E/./src/app/page.tsx",
+    "webpack://_N_E/./src/app/admin/[id]/route.ts",
+    "webpack://_N_E/./src/utils/api.ts",
+    "webpack://_N_E/./node_modules/.pnpm/next@14.1.0/dist/client.js"
+  ],
+  "sourcesContent": [
+    "export default function Page() { return null; }",
+    "export async function GET(req) { /* TODO: add authz check */ return Response.json({}); }",
+    "export const API_BASE = '/api/internal';",
+    "module.exports = {};"
+  ],
+  "names": ["Page", "GET", "API_BASE"],
+  "x_google_ignoreList": [3]
+}
+"#;
+
+    #[test]
+    fn fixture_recovers_routes_and_versions_end_to_end() {
+        let parsed = super::super::parse::parse(FIXTURE_WITH_CONTENT).expect("valid fixture map");
+        let paths = parsed.source_paths();
+
+        let routes = extract_routes(&paths, "https://app.example.com/main.js.map");
+        let by_path: std::collections::HashMap<_, _> =
+            routes.iter().map(|r| (r.path.as_str(), r)).collect();
+        // src/app/page.tsx -> /page; src/app/admin/[id]/route.ts -> dynamic.
+        assert_eq!(by_path["/page"].kind, "route");
+        assert!(by_path["/admin/[id]/route"].dynamic);
+        // src/utils/api.ts sits outside a route tree and must not appear.
+        assert!(!routes.iter().any(|r| r.path.contains("utils")));
+
+        // The pnpm vendor path yields a recovered package version.
+        let versions = extract_versions(&paths);
+        assert!(versions
+            .iter()
+            .any(|v| v.name == "next" && v.version.as_deref() == Some("14.1.0")));
+    }
 }
