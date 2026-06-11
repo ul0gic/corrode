@@ -114,6 +114,7 @@ impl SecretScanner {
                     .push(SecretFinding {
                         source: source.to_owned(),
                         matches: matches_vec,
+                        confidence: None,
                     });
             }
         }
@@ -133,6 +134,7 @@ impl SecretScanner {
                     .push(SecretFinding {
                         source: source.to_owned(),
                         matches: matches_vec,
+                        confidence: None,
                     });
             }
         }
@@ -167,6 +169,7 @@ impl SecretScanner {
                 .push(SecretFinding {
                     source: source.to_owned(),
                     matches: service_role_jwts,
+                    confidence: None,
                 });
         }
 
@@ -177,6 +180,7 @@ impl SecretScanner {
                 .push(SecretFinding {
                     source: source.to_owned(),
                     matches: anon_jwts,
+                    confidence: None,
                 });
         }
 
@@ -187,6 +191,7 @@ impl SecretScanner {
                 .push(SecretFinding {
                     source: source.to_owned(),
                     matches: other_jwts,
+                    confidence: None,
                 });
         }
     }

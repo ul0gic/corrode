@@ -15,6 +15,21 @@ pub struct ScanResult {
     pub vulnerabilities: Vec<Vulnerability>,
     pub comments: Vec<Comment>,
     pub api_tests: Vec<ApiTestResult>,
+    // Client-Side Attack Surface Intelligence (v0.4.0). Empty by default; populated
+    // by the Phase 1/2 detectors. Skipped from JSON when empty so pre-0.4 output is
+    // byte-identical when the new detectors find nothing.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub source_maps_intel: Vec<SourceMapIntel>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub framework_manifests: Vec<FrameworkManifest>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub route_surface: Vec<RouteSurface>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub taint_flows: Vec<TaintFlow>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub gadgets: Vec<Gadget>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub post_message_handlers: Vec<PostMessageHandler>,
     pub success: bool,
     pub error: Option<String>,
 }
@@ -30,6 +45,9 @@ pub struct TechnologyVersion {
 pub struct SecretFinding {
     pub source: String,
     pub matches: Vec<String>,
+    // Confidence is orthogonal to severity. None = unscored (Phase 3 fills this in).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub confidence: Option<Confidence>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -152,6 +170,9 @@ pub struct Vulnerability {
     pub description: String,
     pub remediation: String,
     pub url: Option<String>,
+    // Confidence is orthogonal to `severity`. None = unscored (Phase 3 fills this in).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub confidence: Option<Confidence>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -162,4 +183,138 @@ pub struct ApiTestResult {
     pub vulnerable: bool,
     pub evidence: String,
     pub details: String,
+}
+
+// ── Confidence model (v0.4.0) ─────────────────────────────────────────────
+// Data-only here. The scoring engine that produces these lands in Phase 3
+// (`detectors/confidence.rs`). Confidence is strictly orthogonal to severity:
+// severity = "how bad if real", confidence = "how sure we are it's real".
+// See `.project/research/confidence-model-brief.md` for the scoring spec.
+
+/// Confidence band for a finding. Ordered Low < Medium < High for sorting.
+/// Bands map from the 0–100 score: 0–39 Low, 40–74 Medium, 75–100 High.
+#[derive(Debug, Serialize, Deserialize, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+#[serde(rename_all = "lowercase")]
+pub enum ConfidenceLevel {
+    Low,
+    Medium,
+    High,
+}
+
+/// Where the evidence for a finding came from, ranked by trustworthiness during
+/// scoring (`Runtime` most trusted, `Ast` least). `SourceMap` trust is
+/// finding-type dependent — high for recovered secrets/versions, AST-equivalent
+/// for taint flows.
+// Reserved by the Phase 0 confidence scaffolding; first consumed by the Phase 1
+// source-map detector and the Phase 3 scoring engine. Allowed dead until then.
+#[allow(dead_code)]
+#[derive(Debug, Serialize, Deserialize, Clone, Copy, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum EvidenceSource {
+    Runtime,
+    Network,
+    Ast,
+    Dom,
+    Header,
+    SourceMap,
+}
+
+/// A single signed contribution to a confidence score, retained so reports can
+/// explain *why* a finding scored the way it did.
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct ConfidenceFactor {
+    pub dimension: String,
+    pub delta: i8,
+    pub note: String,
+}
+
+/// Computed confidence in a finding: a banded 0–100 score plus the factors that
+/// produced it. `None` on a finding means unscored.
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct Confidence {
+    pub level: ConfidenceLevel,
+    pub score: u8,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub factors: Vec<ConfidenceFactor>,
+}
+
+// ── Pillar finding types (v0.4.0) ─────────────────────────────────────────
+// Defined up front in Phase 0 so the parallel Phase 1/2 detectors consume them
+// without re-touching this file. Each reserves an `Option<Confidence>` field.
+
+/// Recovered intelligence from an exposed JavaScript source map. (Pillar 1)
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct SourceMapIntel {
+    pub map_url: String,
+    pub script_url: String,
+    /// Original source file paths recovered from the map's `sources` array.
+    pub recovered_sources: Vec<String>,
+    /// True when `sourcesContent` was present (full source text recovered).
+    pub has_sources_content: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub confidence: Option<Confidence>,
+}
+
+/// A parsed framework build/route manifest. (Pillar 1)
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct FrameworkManifest {
+    pub framework: String,
+    /// e.g. "build-manifest", "ssg-manifest", "route-manifest".
+    pub manifest_type: String,
+    pub routes: Vec<String>,
+    pub build_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub confidence: Option<Confidence>,
+}
+
+/// A discovered client-side route, API path, controller, or component. (Pillar 1)
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct RouteSurface {
+    pub path: String,
+    /// "route" | "api" | "component" | "controller".
+    pub kind: String,
+    pub source: String,
+    pub dynamic: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub confidence: Option<Confidence>,
+}
+
+/// A static source→sink taint flow. Reports that a flow *exists* — never fires it. (Pillar 2)
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct TaintFlow {
+    pub source: String,
+    pub sink: String,
+    /// Intermediate identifiers/members between source and sink, in order.
+    pub path: Vec<String>,
+    pub script_url: String,
+    pub location: String,
+    /// True when a value was actually observed flowing at runtime (not just static).
+    pub runtime_observed: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub confidence: Option<Confidence>,
+}
+
+/// A classified client-side gadget candidate with an exploitability hint. (Pillar 2)
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct Gadget {
+    /// "dom-xss" | "prototype-pollution" | "open-redirect" | "jsonp" |
+    /// "postmessage-trust" | "csp-bypass" | "unsafe-template".
+    pub category: String,
+    pub description: String,
+    pub script_url: String,
+    pub exploitability_hint: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub confidence: Option<Confidence>,
+}
+
+/// A `message` event handler and its origin-validation posture. (Pillar 2)
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct PostMessageHandler {
+    pub script_url: String,
+    pub location: String,
+    /// "none" | "weak" | "strict".
+    pub origin_check: String,
+    pub reaches_sink: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub confidence: Option<Confidence>,
 }

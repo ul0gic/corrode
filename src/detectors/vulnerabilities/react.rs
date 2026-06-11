@@ -5,6 +5,9 @@ use crate::types::Vulnerability;
 
 // CVE-2025-55182 — RCE (Critical)
 // Affected: react-server-dom-webpack < 19.1.0 (specific versions)
+// Next.js tracked the same RSC flaw under its own advisory (CVE-2025-66478),
+// which later reporting treats as a duplicate of CVE-2025-55182. We report the
+// single canonical CVE-2025-55182 finding to avoid double-counting the two.
 #[allow(clippy::unwrap_used)]
 static RSC_VULN_REGEX: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(
@@ -45,10 +48,11 @@ pub fn detect_rsc_vulns(text: &str, source: &str) -> Vec<Vulnerability> {
             vuln_type: "React RSC RCE (CVE-2025-55182)".to_owned(),
             severity: "critical".to_owned(),
             description: format!(
-                "Vulnerable {pkg} detected ({ver}). CVE-2025-55182 allows unauthenticated RCE in React Server Components/Functions."
+                "Vulnerable {pkg} detected ({ver}). CVE-2025-55182 allows unauthenticated RCE in React Server Components/Functions. Next.js's advisory CVE-2025-66478 covers the same flaw and is considered a duplicate — treat these as one issue, not two."
             ),
             remediation: "Upgrade react-server-dom-* to 19.0.1/19.1.2/19.2.1 or framework patched versions (Next.js 15.x/16.x etc.).".to_owned(),
             url: Some(source.to_owned()),
+            confidence: None,
         });
     }
 
@@ -63,6 +67,7 @@ pub fn detect_rsc_vulns(text: &str, source: &str) -> Vec<Vulnerability> {
             ),
             remediation: "Upgrade react-server-dom-* to 19.0.3/19.1.4/19.2.3.".to_owned(),
             url: Some(source.to_owned()),
+            confidence: None,
         });
     }
 
@@ -77,6 +82,7 @@ pub fn detect_rsc_vulns(text: &str, source: &str) -> Vec<Vulnerability> {
             ),
             remediation: "Upgrade react-server-dom-* to 19.0.3/19.1.4/19.2.3.".to_owned(),
             url: Some(source.to_owned()),
+            confidence: None,
         });
     }
 
@@ -91,6 +97,7 @@ pub fn detect_rsc_vulns(text: &str, source: &str) -> Vec<Vulnerability> {
             ),
             remediation: "Upgrade react-server-dom-* to 19.0.4/19.1.5/19.2.4.".to_owned(),
             url: Some(source.to_owned()),
+            confidence: None,
         });
     }
 

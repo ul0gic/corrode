@@ -25,6 +25,7 @@ pub(crate) fn analyze_security(
             description: "Cookies missing Secure/HttpOnly flags".to_owned(),
             remediation: "Set Secure and HttpOnly flags on all session cookies".to_owned(),
             url: None,
+            confidence: None,
         });
     }
 
@@ -76,6 +77,7 @@ pub(crate) fn analyze_security(
             remediation: "Restrict CORS to specific trusted origins instead of using wildcard (*)"
                 .to_owned(),
             url: None,
+            confidence: None,
         });
     }
 
@@ -87,6 +89,7 @@ pub(crate) fn analyze_security(
             remediation: "Add security headers: CSP, HSTS, X-Frame-Options, X-Content-Type-Options"
                 .to_owned(),
             url: None,
+            confidence: None,
         });
     }
 
@@ -100,6 +103,7 @@ pub(crate) fn analyze_security(
             ),
             remediation: "Ensure all resources are loaded over HTTPS".to_owned(),
             url: None,
+            confidence: None,
         });
     }
 
