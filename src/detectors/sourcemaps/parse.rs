@@ -28,6 +28,9 @@ pub struct RecoveredSource {
 #[derive(Debug, Clone)]
 pub struct ParsedSourceMap {
     pub sources: Vec<RecoveredSource>,
+    // Parsed for v3-format completeness; no intel path reads the symbol-name
+    // table yet (it feeds a future symbol-recovery pass, not secrets/routes).
+    #[allow(dead_code)]
     pub names: Vec<String>,
 }
 

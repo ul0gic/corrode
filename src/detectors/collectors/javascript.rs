@@ -17,6 +17,11 @@ pub struct ScriptArtifacts {
     pub script_count: usize,
     pub scripts_array: Vec<Value>,
     pub source_maps: Vec<String>,
+    /// `(referrer, map_ref)` pairs for source-map retrieval. The referrer is the
+    /// external script `src` for maps found in that script, or the page URL for
+    /// inline scripts and bare `.map` script srcs — preserved so `sourcemaps`
+    /// can resolve relative map URLs against the right base.
+    pub source_map_candidates: Vec<(String, String)>,
     pub window_objects: HashMap<String, String>,
     pub debug_flags: Vec<String>,
     pub api_endpoints: Vec<DiscoveredEndpoint>,
@@ -29,6 +34,7 @@ pub async fn collect(
     page: &Page,
     scanner: &SecretScanner,
     target_host: Option<&str>,
+    page_url: &str,
 ) -> Result<ScriptArtifacts> {
     let scripts = match page
         .evaluate("Array.from(document.scripts).map(s => ({ src: s.src, inline: !s.src, content: s.src ? null : s.textContent.substring(0, 5000) }))")
@@ -40,6 +46,7 @@ pub async fn collect(
 
     let scripts_array: Vec<Value> = serde_json::from_value(scripts).unwrap_or_default();
     let mut source_maps = Vec::new();
+    let mut source_map_candidates = Vec::new();
     let mut api_endpoints = Vec::new();
     let mut ast_findings = Vec::new();
     let mut vulnerabilities = Vec::new();
@@ -62,7 +69,11 @@ pub async fn collect(
                 content,
                 &format!("inline-script-{idx}"),
             ));
-            source_maps.extend(detect_source_map_urls(content));
+            // Maps referenced by an inline script resolve against the page URL.
+            for map_ref in detect_source_map_urls(content) {
+                source_map_candidates.push((page_url.to_owned(), map_ref.clone()));
+                source_maps.push(map_ref);
+            }
         }
 
         if let Some(src) = script.get("src").and_then(|v| v.as_str()) {
@@ -70,6 +81,8 @@ pub async fn collect(
                 let src_lower = src.to_ascii_lowercase();
                 #[allow(clippy::case_sensitive_file_extension_comparisons)]
                 if src_lower.ends_with(".map") || src_lower.contains(".js.map") {
+                    // A `.map` script src is itself the map; resolve against the page URL.
+                    source_map_candidates.push((page_url.to_owned(), src.to_owned()));
                     source_maps.push(src.to_owned());
                 }
 
@@ -102,7 +115,11 @@ pub async fn collect(
                         }
                         vulnerabilities
                             .extend(vulnerabilities::react::detect_rsc_vulns(&text, src));
-                        source_maps.extend(detect_source_map_urls(&text));
+                        // Maps referenced inside an external script resolve against that script.
+                        for map_ref in detect_source_map_urls(&text) {
+                            source_map_candidates.push((src.to_owned(), map_ref.clone()));
+                            source_maps.push(map_ref);
+                        }
                     }
                 }
             }
@@ -178,6 +195,7 @@ pub async fn collect(
         script_count: scripts_array.len(),
         scripts_array,
         source_maps,
+        source_map_candidates,
         window_objects,
         debug_flags: debug_mode,
         api_endpoints,
@@ -229,4 +247,55 @@ fn detect_source_map_urls(content: &str) -> Vec<String> {
         .captures_iter(content)
         .filter_map(|cap| cap.get(1).map(|m| m.as_str().to_owned()))
         .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn detects_line_and_block_source_mapping_urls() {
+        let line = "console.log(1);\n//# sourceMappingURL=app.js.map";
+        assert_eq!(detect_source_map_urls(line), vec!["app.js.map".to_owned()]);
+
+        let block = "code;/*# sourceMappingURL=vendor.js.map */";
+        assert_eq!(
+            detect_source_map_urls(block),
+            vec!["vendor.js.map".to_owned()]
+        );
+    }
+
+    #[test]
+    fn ignores_scripts_with_no_map_reference() {
+        assert!(detect_source_map_urls("const x = 1; // just a comment").is_empty());
+    }
+
+    // Mirrors how `collect` assigns referrers: an inline script's maps resolve
+    // against the page URL, while an external script's maps resolve against the
+    // script `src`. The async `collect` itself needs a live Page; this asserts
+    // the referrer-assignment contract over the extraction primitive it uses.
+    #[test]
+    fn referrer_assignment_matches_collect_contract() {
+        let page_url = "https://example.com/app";
+        let inline = "//# sourceMappingURL=inline.js.map";
+        let inline_candidates: Vec<(String, String)> = detect_source_map_urls(inline)
+            .into_iter()
+            .map(|m| (page_url.to_owned(), m))
+            .collect();
+        assert_eq!(
+            inline_candidates,
+            vec![(page_url.to_owned(), "inline.js.map".to_owned())]
+        );
+
+        let script_src = "https://cdn.example.com/static/main.js";
+        let external = "//# sourceMappingURL=main.js.map";
+        let external_candidates: Vec<(String, String)> = detect_source_map_urls(external)
+            .into_iter()
+            .map(|m| (script_src.to_owned(), m))
+            .collect();
+        assert_eq!(
+            external_candidates,
+            vec![(script_src.to_owned(), "main.js.map".to_owned())]
+        );
+    }
 }

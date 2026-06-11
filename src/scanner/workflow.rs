@@ -16,7 +16,7 @@ use crate::detectors::{
     },
     secrets::SecretScanner,
     security::analyze_security,
-    technologies, vulnerabilities,
+    sourcemaps, technologies, vulnerabilities,
 };
 use crate::network::monitor::NetworkMonitor;
 use crate::reporting::{json as json_report, markdown};
@@ -410,7 +410,7 @@ async fn scan_url(
     let target_host = url::Url::parse(&url)
         .ok()
         .and_then(|u| u.host_str().map(std::borrow::ToOwned::to_owned));
-    let script_data = javascript::collect(&page, &scanner, target_host.as_deref()).await?;
+    let script_data = javascript::collect(&page, &scanner, target_host.as_deref(), &url).await?;
 
     let DomArtifacts {
         forms,
@@ -429,12 +429,29 @@ async fn scan_url(
         script_count,
         scripts_array,
         mut source_maps,
+        source_map_candidates,
         window_objects,
         debug_flags,
         api_endpoints,
         ast_findings,
         vulnerabilities: script_vulns,
     } = script_data;
+
+    // Pillar 1 — passively recover source maps referenced by the page's scripts,
+    // then run the recovered first-party source through the same secret scanner.
+    // Best-effort: `analyze` logs and skips any bad/off-origin/oversized map.
+    let source_map_report =
+        sourcemaps::analyze(&source_map_candidates, target_host.as_deref()).await;
+    for (path, content) in &source_map_report.recovered_sources {
+        let label = format!("Source Map: {path}");
+        scanner.scan_text(content, &label).await;
+        scanner.extract_comments(content, &label).await;
+    }
+    if verbose {
+        for entry in &source_map_report.fetch_log {
+            println!("{} source-map {}", "[*]".cyan(), entry.dimmed());
+        }
+    }
 
     let elapsed = start.elapsed();
     let secrets = scanner.get_findings().await;
@@ -472,6 +489,20 @@ async fn scan_url(
     all_vulns.extend(script_vulns);
     all_vulns.extend(vulnerabilities::check_all(&tech.versions));
 
+    // Merge source-map-recovered versions into the technology surface, deduped
+    // by (name, version) so a version already detected at runtime isn't doubled.
+    let mut technology_versions = tech.versions;
+    let mut seen_versions: std::collections::HashSet<(String, Option<String>)> =
+        technology_versions
+            .iter()
+            .map(|v| (v.name.clone(), v.version.clone()))
+            .collect();
+    for version in source_map_report.versions {
+        if seen_versions.insert((version.name.clone(), version.version.clone())) {
+            technology_versions.push(version);
+        }
+    }
+
     let result = ScanResult {
         url: url.clone(),
         timestamp: Utc::now().to_rfc3339(),
@@ -506,13 +537,13 @@ async fn scan_url(
         },
         security,
         technologies: tech.technologies,
-        technology_versions: tech.versions,
+        technology_versions,
         vulnerabilities: all_vulns,
         comments,
         api_tests: vec![],
-        source_maps_intel: vec![],
+        source_maps_intel: source_map_report.intel,
         framework_manifests: vec![],
-        route_surface: vec![],
+        route_surface: source_map_report.routes,
         taint_flows: vec![],
         gadgets: vec![],
         post_message_handlers: vec![],
