@@ -1,39 +1,24 @@
-//! Scoped, passive source-map retrieval (tasks 1.2 + 1.11 scope/safety).
-//!
-//! Strictly passive: we GET only `.map` URLs the page already referenced
-//! (via `//# sourceMappingURL=` or a `.map` script src), resolved against the
-//! referrer and confined to the target origin. No path guessing, no
-//! enumeration, no off-origin follows. Count and size are capped, and every
-//! fetch decision is reported so the caller can log it.
+//! Passive source-map retrieval: GET only `.map` URLs the page already
+//! referenced, resolved against the referrer and confined to the target origin.
+//! No guessing, no off-origin follows; count and size are capped.
 
 use tokio::time::{self, Duration};
 use url::Url;
 
-/// Maximum number of distinct maps fetched per scan.
 pub const MAX_MAPS: usize = 50;
-/// Maximum bytes accepted for a single map (declined if `Content-Length` exceeds).
 pub const MAX_MAP_BYTES: u64 = 25 * 1024 * 1024;
-/// Per-fetch network timeout.
 const FETCH_TIMEOUT: Duration = Duration::from_secs(10);
 
-/// Why a candidate map URL was not fetched — surfaced for transparency logging.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SkipReason {
-    /// `data:` URI or other non-http(s) scheme — nothing to fetch over the network.
     NonHttp,
-    /// Resolved to an origin other than the target.
     OffOrigin,
-    /// Could not be resolved against its referrer.
     Unresolvable,
-    /// The per-scan map count cap was reached.
     CountCapped,
-    /// `Content-Length` exceeded `MAX_MAP_BYTES`.
     TooLarge,
 }
 
-/// Resolve a (possibly relative) `sourceMappingURL` against the URL of the
-/// script or document that referenced it. Returns `None` for unparseable
-/// results and for non-http(s) schemes such as `data:` inline maps.
+/// `None` for unparseable refs and non-http(s) schemes (e.g. `data:` maps).
 pub fn resolve_map_url(referrer: &str, map_ref: &str) -> Option<Url> {
     let base = Url::parse(referrer).ok()?;
     let resolved = base.join(map_ref).ok()?;
@@ -43,10 +28,8 @@ pub fn resolve_map_url(referrer: &str, map_ref: &str) -> Option<Url> {
     }
 }
 
-/// True when `url` belongs to the target origin: an exact host match, a
-/// subdomain of the target, or the target being a subdomain of the host.
-/// With no known target host we conservatively treat everything as in-scope
-/// (matches the existing first-party heuristic in `collectors/javascript.rs`).
+/// In-scope = exact host, a subdomain of the target, or the target a subdomain
+/// of the host. Open when no target host is known (matches `collectors`).
 pub fn is_in_scope(url: &Url, target_host: Option<&str>) -> bool {
     let Some(target) = target_host else {
         return true;
@@ -63,8 +46,7 @@ pub fn is_in_scope(url: &Url, target_host: Option<&str>) -> bool {
             .ends_with(&format!(".{}", host.to_ascii_lowercase()))
 }
 
-/// Classify a candidate before any network call. `Ok(url)` means "fetch this";
-/// `Err(reason)` means skip and log why.
+/// Decide whether to fetch, before any network call.
 pub fn classify(
     referrer: &str,
     map_ref: &str,
@@ -74,7 +56,7 @@ pub fn classify(
     if already_fetched >= MAX_MAPS {
         return Err(SkipReason::CountCapped);
     }
-    // A bare `data:` ref never resolves to http(s); distinguish it for a clearer log.
+    // Distinguish data: from Unresolvable for a clearer log.
     if map_ref.trim_start().starts_with("data:") {
         return Err(SkipReason::NonHttp);
     }
@@ -85,9 +67,8 @@ pub fn classify(
     Ok(url)
 }
 
-/// GET a single in-scope map URL. Declines (returns `Err(TooLarge)`) when the
-/// server advertises a `Content-Length` above the cap; returns `Ok(None)` on
-/// any network/timeout/body error so a single bad map never aborts the scan.
+/// `Ok(None)` on any network/timeout/body error so one bad map never aborts
+/// the scan; `Err(TooLarge)` when it exceeds the size cap.
 pub async fn fetch_map(url: &Url) -> Result<Option<String>, SkipReason> {
     let Ok(Ok(resp)) = time::timeout(FETCH_TIMEOUT, reqwest::get(url.clone())).await else {
         return Ok(None);

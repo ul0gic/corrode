@@ -1,18 +1,7 @@
-//! Pillar 1 — Source-map intelligence.
-//!
-//! Recovers attack-surface intelligence from exposed `JavaScript` source maps:
-//! original filenames, embedded source text (for secret/comment scanning by the
-//! caller), internal routes, and package versions. Strictly passive — GET-only
-//! fetches of `.map` assets already referenced by the page, scoped to the
-//! target origin (see [`retrieve`]).
-//!
-//! The orchestrator wiring (feeding the page's detected map refs in, and
-//! running [`SourceMapReport::recovered_sources`] through the `SecretScanner`)
-//! is added in `scanner/workflow.rs` at Gate 1. See `.project/enhance-plan.md`.
+//! Pillar 1 — source-map intelligence: recover routes, versions, and source
+//! text from a page's exposed maps. Passive; see [`retrieve`] for the scoping.
 
-// Phase 1 builds this module ahead of its Gate-1 wiring into `workflow.rs`; the
-// public entry points are exercised by unit tests but not yet called from the
-// binary. The allow is removed when the gate wires `analyze` into the scan flow.
+// Complete but unwired until Gate 1; remove when `analyze` is called from the binary.
 #![allow(dead_code)]
 
 mod intel;
@@ -21,29 +10,18 @@ mod retrieve;
 
 use crate::types::{RouteSurface, SourceMapIntel, TechnologyVersion};
 
-/// Everything one scan recovered from source maps. The caller owns secret
-/// scanning: it runs [`Self::recovered_sources`] through the `SecretScanner`,
-/// tagging findings as `EvidenceSource::SourceMap` (task 1.4).
 #[derive(Debug, Default)]
 pub struct SourceMapReport {
     pub intel: Vec<SourceMapIntel>,
     pub routes: Vec<RouteSurface>,
     pub versions: Vec<TechnologyVersion>,
-    /// `(source_path, source_text)` for every recovered first-party source that
-    /// carried `sourcesContent`. Fed to the secret/comment scanners by the caller.
+    /// First-party `(path, text)` for the caller to run through the `SecretScanner`.
     pub recovered_sources: Vec<(String, String)>,
-    /// Human-readable trail of fetch decisions (fetched / skipped + why), so the
-    /// scan can log exactly which `.map` assets were touched (task 1.11).
     pub fetch_log: Vec<String>,
 }
 
-/// Retrieve and analyse the source maps referenced by a page.
-///
-/// `candidates` is a list of `(referrer_url, map_ref)` pairs — the referrer is
-/// the script or document URL that carried the `sourceMappingURL`, and `map_ref`
-/// is the (possibly relative) value of that reference. Resolution, origin
-/// scoping, and count/size caps are enforced in [`retrieve`]; a single bad map
-/// is logged and skipped, never fatal.
+/// `candidates` are `(referrer_url, map_ref)` pairs from the page's
+/// `sourceMappingURL` references. A single bad map is logged and skipped.
 pub async fn analyze(
     candidates: &[(String, String)],
     target_host: Option<&str>,
@@ -121,8 +99,7 @@ pub async fn analyze(
         });
     }
 
-    // Collapse duplicate version findings recovered across multiple maps
-    // (dups won't be adjacent, so filter against a seen-set rather than dedup).
+    // Cross-map version dups aren't adjacent, so filter against a seen-set.
     let mut seen_versions = std::collections::HashSet::new();
     report
         .versions

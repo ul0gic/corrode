@@ -510,8 +510,6 @@ async fn scan_url(
         vulnerabilities: all_vulns,
         comments,
         api_tests: vec![],
-        // Pillar 1/2 collections — empty until the Phase 1/2 detectors are wired
-        // into the dispatch below (done at the gate).
         source_maps_intel: vec![],
         framework_manifests: vec![],
         route_surface: vec![],

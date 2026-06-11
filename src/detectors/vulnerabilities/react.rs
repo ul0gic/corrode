@@ -3,11 +3,8 @@ use std::sync::LazyLock;
 
 use crate::types::Vulnerability;
 
-// CVE-2025-55182 — RCE (Critical)
-// Affected: react-server-dom-webpack < 19.1.0 (specific versions)
-// Next.js tracked the same RSC flaw under its own advisory (CVE-2025-66478),
-// which later reporting treats as a duplicate of CVE-2025-55182. We report the
-// single canonical CVE-2025-55182 finding to avoid double-counting the two.
+// CVE-2025-55182 — RCE (Critical). Next.js's CVE-2025-66478 is a duplicate of
+// this; we emit only the one finding so they aren't double-counted.
 #[allow(clippy::unwrap_used)]
 static RSC_VULN_REGEX: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(

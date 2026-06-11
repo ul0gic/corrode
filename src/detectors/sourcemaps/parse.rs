@@ -1,15 +1,8 @@
-//! Source-map v3 parsing (task 1.3).
-//!
-//! We parse only the fields needed to reconstruct attack surface — `sources`,
-//! `sourcesContent`, `names`, `sourceRoot`, `x_google_ignoreList`. The VLQ
-//! `mappings` field is deliberately ignored: Corrode recovers *what* source
-//! existed and its text, not line-accurate position mapping, so decoding VLQ
-//! would be cost with no payoff (per the Phase 0 dependency decision — no new
-//! crate, hand-rolled over `serde_json`).
+//! Source-map v3 parsing. The VLQ `mappings` field is ignored on purpose — we
+//! recover source paths and text, not line-accurate positions.
 
 use serde::Deserialize;
 
-/// Raw source-map JSON, limited to the fields we consume.
 #[derive(Debug, Deserialize)]
 struct RawSourceMap {
     #[serde(default)]
@@ -24,20 +17,14 @@ struct RawSourceMap {
     ignore_list: Vec<usize>,
 }
 
-/// One recovered original source file from a map.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RecoveredSource {
-    /// Source path with `sourceRoot` applied. May be a virtual path
-    /// (e.g. `webpack://app/src/auth.ts`).
     pub path: String,
-    /// Original source text, if `sourcesContent` carried it for this entry.
     pub content: Option<String>,
-    /// True when the tooling marked this source as third-party/ignored
-    /// (`x_google_ignoreList`) — e.g. vendored `node_modules` code.
+    /// Marked third-party by `x_google_ignoreList` (e.g. vendored deps).
     pub ignored: bool,
 }
 
-/// A parsed source map reduced to the entries we care about.
 #[derive(Debug, Clone)]
 pub struct ParsedSourceMap {
     pub sources: Vec<RecoveredSource>,
@@ -45,18 +32,14 @@ pub struct ParsedSourceMap {
 }
 
 impl ParsedSourceMap {
-    /// True when at least one source carried embedded `sourcesContent`.
     pub fn has_sources_content(&self) -> bool {
         self.sources.iter().any(|s| s.content.is_some())
     }
 
-    /// Recovered source paths in declaration order.
     pub fn source_paths(&self) -> Vec<String> {
         self.sources.iter().map(|s| s.path.clone()).collect()
     }
 
-    /// Sources that carry text and are not on the ignore list — the
-    /// first-party code worth scanning for secrets and routes.
     pub fn first_party_with_content(&self) -> impl Iterator<Item = &RecoveredSource> {
         self.sources
             .iter()
@@ -64,15 +47,11 @@ impl ParsedSourceMap {
     }
 }
 
-/// Parse a source-map JSON document.
-///
-/// Tolerant by design: a map with no `sourcesContent` parses fine
-/// (filenames-only mode), and an out-of-range ignore-list index is skipped
-/// rather than rejected. Returns an error only when the JSON itself is
-/// malformed or is not an object.
+/// Errors only on malformed or non-object JSON; missing `sourcesContent` and
+/// out-of-range ignore indices are tolerated.
 pub fn parse(json: &str) -> Result<ParsedSourceMap, serde_json::Error> {
-    // Require a JSON object: serde will otherwise happily build an all-default
-    // struct from a sequence (`[]`) or other non-object via struct-from-seq.
+    // Reject non-objects: serde would otherwise build an all-default struct
+    // from a sequence via struct-from-seq.
     let obj: serde_json::Map<String, serde_json::Value> = serde_json::from_str(json)?;
     let raw: RawSourceMap = serde_json::from_value(serde_json::Value::Object(obj))?;
 
@@ -106,9 +85,6 @@ pub fn parse(json: &str) -> Result<ParsedSourceMap, serde_json::Error> {
     })
 }
 
-/// Join `sourceRoot` to a source path the way the spec describes — simple
-/// prefix concatenation, with a single separator. Absolute or scheme-prefixed
-/// source paths (`webpack://`, `/abs`) are left untouched.
 fn apply_source_root(root: &str, path: &str) -> String {
     if root.is_empty() || path.contains("://") || path.starts_with('/') {
         return path.to_owned();
