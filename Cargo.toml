@@ -46,6 +46,13 @@ toml = "1.1"
 dirs = "6"
 
 [lints.clippy]
+# === DENY GROUPS (fail the build on sharp edges) ===
+# correctness is deny-by-default; the rest are promoted from warn.
+correctness = { level = "deny", priority = -2 }
+suspicious = { level = "deny", priority = -2 }
+perf = { level = "deny", priority = -2 }
+complexity = { level = "deny", priority = -2 }
+
 # === DENY (hard errors) ===
 # Security-critical: no panics in production
 unwrap_used = "deny"

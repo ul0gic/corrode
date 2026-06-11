@@ -1,21 +1,21 @@
-# Corrode Clippy Configuration
-# Security tooling demands maximum strictness
+# Lint LEVELS live in Cargo.toml [lints]; this file holds thresholds + the
+# disallowed lists.
 
-# Function complexity limits
 too-many-lines-threshold = 100
 too-many-arguments-threshold = 6
-
-# Cognitive complexity (how hard a function is to understand)
 cognitive-complexity-threshold = 25
-
-# Type complexity
 type-complexity-threshold = 250
-
-# Maximum number of enum variants before clippy warns
 enum-variant-size-threshold = 200
 
-# Disallow certain types in public APIs
-disallowed-types = []
+# unwrap/expect are denied in production (Cargo.toml) but idiomatic in tests.
+allow-unwrap-in-tests = true
+allow-expect-in-tests = true
 
-# Disallow certain methods
-disallowed-methods = []
+# A passive recon tool must never spawn processes or mutate the environment.
+disallowed-methods = [
+    { path = "std::process::Command::new", reason = "passive-only: never spawn external processes" },
+    { path = "std::env::set_var", reason = "never mutate the process environment" },
+    { path = "std::env::remove_var", reason = "never mutate the process environment" },
+]
+
+disallowed-types = []

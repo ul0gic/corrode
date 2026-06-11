@@ -147,7 +147,7 @@ mod tests {
 
     #[test]
     fn direct_location_into_eval() {
-        let src = r#"eval(location.hash);"#;
+        let src = r"eval(location.hash);";
         let flows = analyze_one(src);
         assert_eq!(flows.len(), 1);
         assert_eq!(flows[0].source, "location.hash");
@@ -181,10 +181,10 @@ mod tests {
     fn no_cross_function_false_flow() {
         // `tainted` is set in one function and a sink reads a *same-named* local
         // in another. Intra-function scoping must not connect them.
-        let src = r#"
+        let src = r"
             function a() { const v = location.search; return v; }
             function b(v) { document.body.innerHTML = v; }
-        "#;
+        ";
         assert!(
             analyze_one(src).is_empty(),
             "must not link taint across functions"
@@ -205,13 +205,13 @@ mod tests {
 
     #[test]
     fn string_settimeout_is_flow_but_fn_ref_is_not() {
-        let tainted_string = r#"
+        let tainted_string = r"
             const code = location.hash;
             setTimeout(code, 100);
-        "#;
+        ";
         assert_eq!(analyze_one(tainted_string).len(), 1);
 
-        let fn_ref = r#"setTimeout(render, 100);"#;
+        let fn_ref = r"setTimeout(render, 100);";
         assert!(analyze_one(fn_ref).is_empty());
     }
 

@@ -260,21 +260,21 @@ mod tests {
 
     #[test]
     fn open_redirect_from_navigation_sink_flow() {
-        let src = r#"
+        let src = r"
             const next = location.hash;
             location.href = next;
-        "#;
+        ";
         let g = inventory(&[(src, "https://example.com/app.js")], None);
         assert!(categories(&g).contains(&"open-redirect"), "{g:?}");
     }
 
     #[test]
     fn prototype_pollution_gadget_from_proto_finding() {
-        let src = r#"
+        let src = r"
             const k = location.hash;
             const obj = {};
             obj.__proto__ = k;
-        "#;
+        ";
         let g = inventory(&[(src, "https://example.com/app.js")], None);
         assert!(categories(&g).contains(&"prototype-pollution"), "{g:?}");
     }

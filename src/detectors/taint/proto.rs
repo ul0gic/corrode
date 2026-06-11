@@ -347,11 +347,11 @@ mod tests {
 
     #[test]
     fn proto_key_write_from_url_source_is_surface() {
-        let src = r#"
+        let src = r"
             const key = location.hash;
             const obj = {};
             obj.__proto__ = key;
-        "#;
+        ";
         let findings = detect_one(src);
         assert_eq!(findings.len(), 1, "{findings:?}");
         assert!(findings[0].sink.contains("__proto__"));
@@ -364,11 +364,11 @@ mod tests {
 
     #[test]
     fn deep_merge_of_tainted_payload_is_surface() {
-        let src = r#"
+        let src = r"
             const raw = location.search;
             const payload = JSON.parse(raw);
             merge(config, payload);
-        "#;
+        ";
         let findings = detect_one(src);
         assert_eq!(findings.len(), 1, "{findings:?}");
         assert!(findings[0].sink.contains("deep-merge"));
@@ -376,10 +376,10 @@ mod tests {
 
     #[test]
     fn configurable_key_write_with_tainted_key_is_surface() {
-        let src = r#"
+        let src = r"
             const k = location.hash;
             target[k] = userValue;
-        "#;
+        ";
         let findings = detect_one(src);
         assert_eq!(findings.len(), 1, "{findings:?}");
         assert!(findings[0].sink.contains("configurable-key"));
@@ -398,7 +398,7 @@ mod tests {
 
     #[test]
     fn proto_key_write_with_constant_rhs_is_not_a_finding() {
-        let src = r#"obj.__proto__ = { polluted: false };"#;
+        let src = r"obj.__proto__ = { polluted: false };";
         assert!(
             detect_one(src).is_empty(),
             "a proto write of constant data is not a tainted surface"
@@ -431,10 +431,10 @@ mod tests {
 
     #[test]
     fn cross_function_taint_does_not_connect() {
-        let src = r#"
+        let src = r"
             function a() { const v = location.search; return v; }
             function b(payload) { merge(config, payload); }
-        "#;
+        ";
         assert!(
             detect_one(src).is_empty(),
             "intra-function scoping must not link these"

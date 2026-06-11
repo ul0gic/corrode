@@ -483,11 +483,11 @@ mod tests {
 
     #[test]
     fn onmessage_assignment_is_a_handler() {
-        let src = r#"
+        let src = r"
             window.onmessage = function (e) {
                 document.body.innerHTML = e.data;
             };
-        "#;
+        ";
         let h = detect_one(src);
         assert_eq!(h.len(), 1, "{h:?}");
         assert_eq!(h[0].origin_check, "none");

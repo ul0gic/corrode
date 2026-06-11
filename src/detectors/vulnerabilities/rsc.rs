@@ -276,7 +276,7 @@ mod tests {
 
     #[test]
     fn duplicate_observed_findings_across_scripts_are_deduped() {
-        let s = r#"react-server-dom-webpack@19.0.0"#;
+        let s = r"react-server-dom-webpack@19.0.0";
         let scripts = [
             (s, "https://app.example.com/a.js"),
             (s, "https://app.example.com/b.js"),
