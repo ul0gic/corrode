@@ -9,9 +9,9 @@ use url::Url;
 
 use super::ast;
 use crate::api::discovery::extract_api_endpoints;
-use crate::detectors::{secrets::SecretScanner, vulnerabilities};
+use crate::detectors::secrets::SecretScanner;
 use crate::scanner::page_utils;
-use crate::types::{AstFinding, DiscoveredEndpoint, Vulnerability};
+use crate::types::{AstFinding, DiscoveredEndpoint};
 
 pub struct ScriptArtifacts {
     pub script_count: usize,
@@ -22,11 +22,20 @@ pub struct ScriptArtifacts {
     /// inline scripts and bare `.map` script srcs — preserved so `sourcemaps`
     /// can resolve relative map URLs against the right base.
     pub source_map_candidates: Vec<(String, String)>,
+    /// `(text, source)` pairs for every first-party script body scanned (inline
+    /// content + fetched external text). Retained so the RSC detector can grade
+    /// the whole script corpus in `workflow.rs` without re-fetching.
+    pub script_bodies: Vec<(String, String)>,
+    /// Asset URL stems from `<link rel="modulepreload">` hrefs and `<script src>`
+    /// URLs — the Vite/webpack chunk-graph input the manifest detector needs.
+    pub chunk_names: Vec<String>,
+    /// JSON-encoded `<astro-island>` attribute maps. Astro has no `window`
+    /// global, so islands are the only client-side signal of its route surface.
+    pub astro_islands: Vec<String>,
     pub window_objects: HashMap<String, String>,
     pub debug_flags: Vec<String>,
     pub api_endpoints: Vec<DiscoveredEndpoint>,
     pub ast_findings: Vec<AstFinding>,
-    pub vulnerabilities: Vec<Vulnerability>,
 }
 
 #[allow(clippy::too_many_lines)]
@@ -49,26 +58,21 @@ pub async fn collect(
     let mut source_map_candidates = Vec::new();
     let mut api_endpoints = Vec::new();
     let mut ast_findings = Vec::new();
-    let mut vulnerabilities = Vec::new();
+    let mut script_bodies: Vec<(String, String)> = Vec::new();
 
     for (idx, script) in scripts_array.iter().enumerate() {
         if let Some(content) = script.get("content").and_then(|v| v.as_str()) {
+            let label = format!("inline-script-{idx}");
             scanner.scan_text(content, "Inline Script").await;
             scanner.extract_comments(content, "Inline Script").await;
-            api_endpoints.extend(extract_api_endpoints(
-                content,
-                &format!("inline-script-{idx}"),
-            ));
+            api_endpoints.extend(extract_api_endpoints(content, &label));
             if should_analyze_ast(None, target_host) {
-                ast_findings.extend(ast::analyze_script(
-                    content,
-                    &format!("inline-script-{idx}"),
-                ));
+                ast_findings.extend(ast::analyze_script(content, &label));
             }
-            vulnerabilities.extend(vulnerabilities::react::detect_rsc_vulns(
-                content,
-                &format!("inline-script-{idx}"),
-            ));
+            // RSC grading happens once over the whole corpus in `workflow.rs` via
+            // `rsc::detect` — retain the body here, do not grade per-script (that
+            // would double-emit the react CVE findings rsc::detect already covers).
+            script_bodies.push((content.to_owned(), label));
             // Maps referenced by an inline script resolve against the page URL.
             for map_ref in detect_source_map_urls(content) {
                 source_map_candidates.push((page_url.to_owned(), map_ref.clone()));
@@ -113,24 +117,31 @@ pub async fn collect(
                         if should_analyze_ast(Some(src), target_host) {
                             ast_findings.extend(ast::analyze_script(&text, src));
                         }
-                        vulnerabilities
-                            .extend(vulnerabilities::react::detect_rsc_vulns(&text, src));
                         // Maps referenced inside an external script resolve against that script.
                         for map_ref in detect_source_map_urls(&text) {
                             source_map_candidates.push((src.to_owned(), map_ref.clone()));
                             source_maps.push(map_ref);
                         }
+                        script_bodies.push((text, src.to_owned()));
                     }
                 }
             }
         }
     }
 
+    let chunk_names = collect_chunk_names(page, &scripts_array).await;
+    let astro_islands = collect_astro_islands(page).await;
+
     let window_objects = page_utils::extract_json::<HashMap<String, String>>(
         page,
         r"
         (() => {
             const results = {};
+            // Manifest/Flight globals routinely exceed the 10k default — Next.js
+            // __BUILD_MANIFEST and __next_f Flight streams in particular — so they
+            // get a larger budget. Parsers downstream degrade gracefully if a value
+            // is still truncated mid-structure.
+            const LARGE = 200000;
             const keys = [
                 '__NEXT_DATA__', '__NUXT__', '__INITIAL_STATE__', 'env', 'ENV',
                 '__APOLLO_STATE__', '__APOLLO_CLIENT__', 'APOLLO_STATE',
@@ -139,6 +150,9 @@ pub async fn collect(
                 '__RELAY_STORE__', '__REACT_QUERY_STATE__',
                 '__REDWOOD__API_PROXY_PATH', '__PAYLOAD_CONFIG__'
             ];
+            const largeKeys = [
+                '__BUILD_MANIFEST', '__SSG_MANIFEST', '__next_f', '__remixManifest'
+            ];
             keys.forEach(key => {
                 if (window[key]) {
                     try {
@@ -146,6 +160,18 @@ pub async fn collect(
                     } catch (e) {
                         results[key] = '[object Object]';
                     }
+                }
+            });
+            largeKeys.forEach(key => {
+                const val = window[key];
+                if (!val) return;
+                try {
+                    // __SSG_MANIFEST is a Set; JSON.stringify yields {} for Sets,
+                    // so spread it into an array first.
+                    const norm = (val instanceof Set) ? Array.from(val) : val;
+                    results[key] = JSON.stringify(norm).substring(0, LARGE);
+                } catch (e) {
+                    results[key] = '[object Object]';
                 }
             });
             return results;
@@ -196,12 +222,58 @@ pub async fn collect(
         scripts_array,
         source_maps,
         source_map_candidates,
+        script_bodies,
+        chunk_names,
+        astro_islands,
         window_objects,
         debug_flags: debug_mode,
         api_endpoints,
         ast_findings,
-        vulnerabilities,
     })
+}
+
+/// Collect chunk asset URL stems for the Vite/webpack chunk-graph input.
+///
+/// Combines `<script src>` URLs (from the already-enumerated `scripts_array`)
+/// with `<link rel="modulepreload">` hrefs queried from the live DOM. Returns the
+/// raw URLs/paths; the manifest detector derives component/chunk stems from them.
+async fn collect_chunk_names(page: &Page, scripts_array: &[Value]) -> Vec<String> {
+    let mut chunks: Vec<String> = scripts_array
+        .iter()
+        .filter_map(|s| s.get("src").and_then(|v| v.as_str()))
+        .filter(|s| !s.is_empty())
+        .map(ToOwned::to_owned)
+        .collect();
+
+    let preloads = page_utils::extract_json::<Vec<String>>(
+        page,
+        r#"
+        Array.from(document.querySelectorAll('link[rel="modulepreload"], link[rel="preload"][as="script"]'))
+            .map(l => l.href)
+            .filter(Boolean)
+    "#,
+    )
+    .await;
+    chunks.extend(preloads);
+    chunks
+}
+
+/// Collect `<astro-island>` custom-element attribute maps as JSON strings.
+///
+/// Astro has no `window` global exposing its route surface, so the islands'
+/// attributes (`component-url`, `props`, etc.) are the only client-side signal.
+async fn collect_astro_islands(page: &Page) -> Vec<String> {
+    page_utils::extract_json::<Vec<String>>(
+        page,
+        r"
+        Array.from(document.querySelectorAll('astro-island')).map(el => {
+            const attrs = {};
+            for (const a of el.attributes) { attrs[a.name] = a.value; }
+            return JSON.stringify(attrs);
+        })
+    ",
+    )
+    .await
 }
 
 fn should_analyze_ast(origin: Option<&str>, target_host: Option<&str>) -> bool {

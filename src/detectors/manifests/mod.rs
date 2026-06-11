@@ -3,24 +3,14 @@
 //! synchronous, no network. Tier-B chunk-bundle fetches are wired by the Lead at
 //! the gate; this module never fetches.
 //!
-//! ## Collector capture gap (extend at Gate 1)
-//! The current `collectors::javascript` probe captures `__NEXT_DATA__`, `__NUXT__`,
-//! `__remixContext`, and `__sveltekit_data`, and truncates each value at 10000 chars.
-//! For full coverage `analyze` needs these additional `window.*` keys captured
-//! (JSON-stringified, with the noted normalization), plus two non-`window` inputs:
-//!
-//! - `__BUILD_MANIFEST` — Next.js Pages Router route goldmine (object).
-//! - `__SSG_MANIFEST` — Next.js SSG routes; convert the `Set` to an array in the JS probe before `JSON.stringify`.
-//! - `__next_f` — Next.js App Router Flight stream (array of tuples).
-//! - `__remixManifest` — Remix route table (or expose `__remixContext.manifest`).
-//! - chunk asset stems — `modulepreload` hrefs and `<script src>` URLs (already collected) passed as `chunk_names`.
-//! - `<astro-island>` — DOM custom-element attribute maps (JSON) as `astro_islands`; Astro has no `window` global.
-//!
-//! Larger truncation budgets help Next `__BUILD_MANIFEST` / Flight coverage but are
-//! not required: every parser degrades gracefully on a truncated/unparseable value.
-
-// Complete but unwired until Gate 1; remove when `analyze` is called from the binary.
-#![allow(dead_code)]
+//! ## Collector inputs
+//! `collectors::javascript` supplies the captured globals (`__NEXT_DATA__`,
+//! `__BUILD_MANIFEST`, `__SSG_MANIFEST` — its `Set` normalized to an array before
+//! stringify, `__next_f`, `__remixManifest`/`__remixContext`, `__NUXT__`,
+//! `__sveltekit_data`) plus two non-`window` inputs: `chunk_names` (modulepreload
+//! hrefs + `<script src>` URLs) and `astro_islands` (`<astro-island>` attribute
+//! JSON — Astro has no `window` global). Every parser degrades gracefully on a
+//! truncated or unparseable value.
 
 mod nextjs;
 mod others;

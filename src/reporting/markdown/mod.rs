@@ -2,13 +2,9 @@ mod appendix;
 mod findings;
 mod network;
 mod security;
+mod sourcemaps;
 mod summary;
 mod technologies;
-// Pillar-1 renderer (task 1.10). Declared test-only so it compiles and its tests
-// run, but stays out of the live report until Gate 1 wires `render_sourcemap_intel`
-// into `write` below.
-#[cfg(test)]
-mod sourcemaps;
 
 use anyhow::Result;
 use std::fs;
@@ -36,6 +32,7 @@ pub fn write(result: &ScanResult, base_output_dir: &Path) -> Result<()> {
     report.extend(technologies::render_technologies(result));
     report.extend(network::render_network(result));
     report.extend(technologies::render_dom(result)?);
+    report.extend(sourcemaps::render_sourcemap_intel(result));
     report.extend(appendix::render_appendix(result));
     report.extend(appendix::render_recommendations(result));
 

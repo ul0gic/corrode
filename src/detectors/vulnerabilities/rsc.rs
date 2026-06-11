@@ -8,9 +8,6 @@
 //! reused verbatim; this module only adds surface fingerprinting and the inferred
 //! advisory, so the version tables are never forked.
 
-// Complete but unwired until Gate 1; remove when `detect` is called from workflow.rs.
-#![allow(dead_code)]
-
 use std::collections::HashMap;
 use std::sync::LazyLock;
 

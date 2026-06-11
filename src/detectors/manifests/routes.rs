@@ -33,6 +33,8 @@ pub struct RouteSet {
 }
 
 impl RouteSet {
+    // Test-only constructor; production callers use `RouteSet::default()`.
+    #[cfg(test)]
     pub fn new() -> Self {
         Self::default()
     }
@@ -63,6 +65,8 @@ impl RouteSet {
         self.routes.iter().map(|r| r.path.clone()).collect()
     }
 
+    // Test-only: production code consumes the set via `into_vec`/`clone_paths`.
+    #[cfg(test)]
     pub fn clone_routes(&self) -> Vec<RouteSurface> {
         self.routes.clone()
     }

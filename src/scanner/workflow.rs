@@ -9,11 +9,13 @@ use std::time::{Duration, Instant};
 use tokio::time;
 
 use crate::config::{Config, OutputFormat};
+use crate::detectors::vulnerabilities::rsc;
 use crate::detectors::{
     collectors::{
         dom::{self, DomArtifacts},
         javascript::{self, ScriptArtifacts},
     },
+    manifests,
     secrets::SecretScanner,
     security::analyze_security,
     sourcemaps, technologies, vulnerabilities,
@@ -430,11 +432,13 @@ async fn scan_url(
         scripts_array,
         mut source_maps,
         source_map_candidates,
+        script_bodies,
+        chunk_names,
+        astro_islands,
         window_objects,
         debug_flags,
         api_endpoints,
         ast_findings,
-        vulnerabilities: script_vulns,
     } = script_data;
 
     // Pillar 1 — passively recover source maps referenced by the page's scripts,
@@ -486,8 +490,46 @@ async fn scan_url(
     }
 
     let (mut all_vulns, security) = analyze_security(&raw_cookies, &all_calls, &url);
-    all_vulns.extend(script_vulns);
+
+    // Pillar 1 — RSC/App Router grading over the full first-party script corpus.
+    // `rsc::detect` is the single owner of RSC vuln emission: it calls
+    // `react::detect_rsc_vulns` internally and de-dupes, so the collector no longer
+    // grades scripts itself. We still guard against any react RSC CVE arriving via
+    // another path (e.g. a future `check_all` entry) by de-duping on
+    // (vuln_type, url) before extending.
+    let script_refs: Vec<(&str, &str)> = script_bodies
+        .iter()
+        .map(|(text, src)| (text.as_str(), src.as_str()))
+        .collect();
+    let rsc_vulns = rsc::detect(&script_refs, &window_objects);
+    let mut seen_vulns: std::collections::HashSet<(String, Option<String>)> = all_vulns
+        .iter()
+        .map(|v| (v.vuln_type.clone(), v.url.clone()))
+        .collect();
+    for vuln in rsc_vulns {
+        if seen_vulns.insert((vuln.vuln_type.clone(), vuln.url.clone())) {
+            all_vulns.push(vuln);
+        }
+    }
     all_vulns.extend(vulnerabilities::check_all(&tech.versions));
+
+    // Pillar 1 — framework manifest extraction from captured in-page state.
+    // Best-effort: each per-framework parser degrades gracefully on absent or
+    // truncated globals. Routes are appended to (not overwritten over) the
+    // source-map-derived route surface, then deduped by (path, kind).
+    let manifest_report = manifests::analyze(
+        &window_objects,
+        &tech.technologies,
+        &chunk_names,
+        &astro_islands,
+    );
+    let framework_manifests = manifest_report.manifests;
+
+    let mut route_surface = source_map_report.routes;
+    route_surface.extend(manifest_report.routes);
+    let mut seen_routes: std::collections::HashSet<(String, String)> =
+        std::collections::HashSet::new();
+    route_surface.retain(|r| seen_routes.insert((r.path.clone(), r.kind.clone())));
 
     // Merge source-map-recovered versions into the technology surface, deduped
     // by (name, version) so a version already detected at runtime isn't doubled.
@@ -542,8 +584,8 @@ async fn scan_url(
         comments,
         api_tests: vec![],
         source_maps_intel: source_map_report.intel,
-        framework_manifests: vec![],
-        route_surface: source_map_report.routes,
+        framework_manifests,
+        route_surface,
         taint_flows: vec![],
         gadgets: vec![],
         post_message_handlers: vec![],
