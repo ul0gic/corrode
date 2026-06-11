@@ -82,8 +82,11 @@ pub async fn collect(
 
                 let mut fetched = None;
 
+                // Scope before egress: never issue a GET to an off-origin src.
+                let first_party = is_first_party_url(src, target_host);
+
                 // Only fetch http/https scripts — never file:// (SEC-005)
-                if src.starts_with("http://") || src.starts_with("https://") {
+                if first_party && (src.starts_with("http://") || src.starts_with("https://")) {
                     if let Ok(Ok(resp)) =
                         time::timeout(Duration::from_secs(10), reqwest::get(src)).await
                     {
@@ -94,26 +97,23 @@ pub async fn collect(
                 }
 
                 if let Some(text) = fetched {
-                    let first_party = is_first_party_url(src, target_host);
-                    if first_party {
-                        scanner.scan_text(&text, &format!("Script: {src}")).await;
-                        scanner
-                            .extract_comments(&text, &format!("Script: {src}"))
-                            .await;
-                        api_endpoints.extend(extract_api_endpoints(
-                            &text,
-                            &format!("external-script-{idx}"),
-                        ));
-                        if should_analyze_ast(Some(src), target_host) {
-                            ast_findings.extend(ast::analyze_script(&text, src));
-                        }
-                        // Maps referenced inside an external script resolve against that script.
-                        for map_ref in detect_source_map_urls(&text) {
-                            source_map_candidates.push((src.to_owned(), map_ref.clone()));
-                            source_maps.push(map_ref);
-                        }
-                        script_bodies.push((text, src.to_owned()));
+                    scanner.scan_text(&text, &format!("Script: {src}")).await;
+                    scanner
+                        .extract_comments(&text, &format!("Script: {src}"))
+                        .await;
+                    api_endpoints.extend(extract_api_endpoints(
+                        &text,
+                        &format!("external-script-{idx}"),
+                    ));
+                    if should_analyze_ast(Some(src), target_host) {
+                        ast_findings.extend(ast::analyze_script(&text, src));
                     }
+                    // Maps referenced inside an external script resolve against that script.
+                    for map_ref in detect_source_map_urls(&text) {
+                        source_map_candidates.push((src.to_owned(), map_ref.clone()));
+                        source_maps.push(map_ref);
+                    }
+                    script_bodies.push((text, src.to_owned()));
                 }
             }
         }
