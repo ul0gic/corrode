@@ -30,7 +30,11 @@
 // Unwired until Gate 2; mirrors `sourcemaps`/`manifests` during their build.
 #![allow(dead_code)]
 
+pub(crate) mod csp;
+pub(crate) mod gadgets;
 pub(crate) mod parse;
+pub(crate) mod postmessage;
+pub(crate) mod proto;
 pub(crate) mod sinks;
 pub(crate) mod sources;
 pub(crate) mod visitor;
@@ -75,6 +79,33 @@ fn dedupe(mut flows: Vec<TaintFlow>) -> Vec<TaintFlow> {
     let mut seen = std::collections::HashSet::new();
     flows.retain(|f| seen.insert((f.source.clone(), f.sink.clone(), f.location.clone())));
     flows
+}
+
+/// Promote statically-found flows to runtime-confirmed when their source value
+/// was actually observed at runtime (task 2.8). `observed_values` is the set of
+/// strings the network monitor recorded flowing through the page; the live
+/// plumbing is wired at Gate 2 — this function is the static, testable seam.
+///
+/// A flow is marked observed when any non-trivial observed value mentions the
+/// flow's source or sink label, the only stable identifiers a `TaintFlow`
+/// carries. Empty/very short observed values are ignored so a stray `""` or a
+/// single character cannot promote every flow (the low-FP stance applies here
+/// too).
+pub fn mark_runtime_observed(flows: &mut [TaintFlow], observed_values: &[String]) {
+    let signals: Vec<&str> = observed_values
+        .iter()
+        .map(String::as_str)
+        .map(str::trim)
+        .filter(|v| v.len() >= 3)
+        .collect();
+    if signals.is_empty() {
+        return;
+    }
+    for flow in flows.iter_mut() {
+        flow.runtime_observed = signals
+            .iter()
+            .any(|v| v.contains(&flow.source) || v.contains(&flow.sink));
+    }
 }
 
 /// Human-readable rendering of a flow as `source → …hops… → sink`. Used by the
@@ -194,6 +225,47 @@ mod tests {
         let flows = analyze_one(src);
         assert_eq!(flows.len(), 1, "{flows:?}");
         assert!(flows[0].source.contains("data"));
+    }
+
+    fn sample_flow(source: &str, sink: &str) -> TaintFlow {
+        TaintFlow {
+            source: source.to_owned(),
+            sink: sink.to_owned(),
+            path: vec![],
+            script_url: "u".to_owned(),
+            location: "u:1:1".to_owned(),
+            runtime_observed: false,
+            confidence: None,
+        }
+    }
+
+    #[test]
+    fn runtime_hook_marks_matching_flow() {
+        let mut flows = vec![sample_flow("location.hash", "innerHTML")];
+        mark_runtime_observed(&mut flows, &["payload via location.hash seen".to_owned()]);
+        assert!(flows[0].runtime_observed);
+    }
+
+    #[test]
+    fn runtime_hook_leaves_unmatched_flow_unobserved() {
+        let mut flows = vec![sample_flow("location.hash", "innerHTML")];
+        mark_runtime_observed(&mut flows, &["unrelated value".to_owned()]);
+        assert!(!flows[0].runtime_observed);
+    }
+
+    #[test]
+    fn runtime_hook_ignores_trivial_observed_values() {
+        // Short/empty observed values must not promote flows.
+        let mut flows = vec![sample_flow("location.hash", "innerHTML")];
+        mark_runtime_observed(&mut flows, &[String::new(), "ab".to_owned()]);
+        assert!(!flows[0].runtime_observed);
+    }
+
+    #[test]
+    fn runtime_hook_empty_observed_is_noop() {
+        let mut flows = vec![sample_flow("location.hash", "innerHTML")];
+        mark_runtime_observed(&mut flows, &[]);
+        assert!(!flows[0].runtime_observed);
     }
 
     #[test]

@@ -4,6 +4,9 @@ mod network;
 mod security;
 mod sourcemaps;
 mod summary;
+// Self-contained; wired into write() at Gate 2.
+#[cfg(test)]
+mod taint;
 mod technologies;
 
 use anyhow::Result;
