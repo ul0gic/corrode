@@ -14,6 +14,8 @@ Built with Rust and chromiumoxide for fast, headless scanning. Corrode performs 
 
 ```
 src/
+├── lib.rs                    # Library crate root (corrode_scanner) — public module surface
+├── main.rs                   # Thin binary shim over the library
 ├── api/                      # API endpoint discovery (passive extraction from JS)
 ├── cli.rs                    # CLI definitions
 ├── config.rs                 # Config normalization and config file loading
@@ -27,6 +29,22 @@ src/
 │   │   └── patterns/         #   45+ categorized regex patterns (auth, cloud, ai,
 │   │                         #     payment, communication, monitoring, collaboration,
 │   │                         #     vcs, database, infrastructure)
+│   ├── sourcemaps/           # Source-map intelligence (passive .map recovery)
+│   │   ├── retrieve.rs       #   Scoped, capped, GET-only .map fetch
+│   │   ├── parse.rs          #   Source-map v3 JSON parsing (sources/sourcesContent)
+│   │   └── intel.rs          #   Routes + package versions from recovered source
+│   ├── manifests/            # Framework build/route manifest extraction
+│   │   ├── nextjs.rs         #   __BUILD_MANIFEST / __SSG_MANIFEST / Flight routes
+│   │   ├── remix.rs          #   Remix route-module manifest
+│   │   └── others.rs         #   Nuxt, SvelteKit, Astro islands, Vite/webpack chunks
+│   ├── taint/                # Client-side taint & gadget mapping (static + observed)
+│   │   ├── sources.rs        #   Taint sources (location, postMessage, storage, …)
+│   │   ├── sinks.rs          #   Sinks (innerHTML, eval, setAttribute, …)
+│   │   ├── proto.rs          #   Prototype-pollution surface heuristic
+│   │   ├── postmessage.rs    #   postMessage handler / origin-check mapper
+│   │   └── gadgets.rs        #   Gadget inventory + CSP-bypass correlation
+│   ├── confidence.rs         # Confidence scoring engine (severity × confidence)
+│   ├── scoring.rs            # Per-finding-type confidence application
 │   ├── security/             # Security analysis
 │   │   └── mod.rs            #   Cookie, header, CORS, mixed content checks
 │   ├── technologies/         # Technology fingerprinting (4 signal sources)
@@ -35,18 +53,21 @@ src/
 │   │   ├── runtime.rs        #   Window object detection
 │   │   └── scripts.rs        #   Script URLs + network request patterns
 │   └── vulnerabilities/      # Per-framework CVE detection
-│       ├── nextjs.rs         #   5 Next.js CVEs
-│       └── react.rs          #   4 React Server Components CVEs
+│       ├── nextjs.rs         #   Next.js CVEs
+│       ├── react.rs          #   React Server Components CVEs
+│       └── rsc.rs            #   RSC deep passive mode (Flight/server-action markers)
 ├── network/                  # Network monitor
 ├── reporting/
+│   ├── json.rs               # JSON output (schema_version, confidence fields)
 │   └── markdown/             # Section-based Markdown report: summary, findings,
-│                             #   security, network, technologies, appendix
+│                             #   security, network, technologies, sourcemaps,
+│                             #   taint, appendix
 ├── scanner/
 │   ├── chrome.rs             # Chrome binary resolution
 │   └── workflow.rs           # Browser orchestration and scan workflow
-├── types.rs                  # Shared data structures
-└── main.rs                   # Entry point
+└── types.rs                  # Shared data structures
 fixtures/                     # Static fixture pages for local testing
+tests/                        # Integration tests driving the library crate
 corrode-output/               # Default output directory (per scan)
 examples/                     # Example configuration files
 ```
@@ -62,16 +83,24 @@ graph TD
     E --> G[Secret Scanner]
     D --> H[Tech Fingerprinter]
     C --> I[Security Analysis]
-    E --> J[CVE Detector]
-    G --> Results[Reporting JSON + MD]
+    E --> J[CVE + RSC Detector]
+    E --> K[Source-Map Intelligence]
+    E --> L[Framework Manifests]
+    E --> M[Taint & Gadget Mapping]
+    K --> G
+    G --> S[Confidence Scoring]
+    J --> S
+    K --> S
+    L --> S
+    M --> S
+    S --> Results[Reporting JSON + MD]
     C --> Results
     D --> Results
     H --> Results
     I --> Results
-    J --> Results
 
     classDef purple fill:#e9d5ff,stroke:#7c3aed,stroke-width:2px,color:#000
-    class A,B,C,D,E,F,G,H,I,J,Results purple
+    class A,B,C,D,E,G,H,I,J,K,L,M,S,Results purple
 ```
 
 ## Features
@@ -92,10 +121,20 @@ graph TD
 - **Version Extraction** - Extracts React and Next.js versions for CVE correlation
 - **DOM Analysis** - Analyzes forms, hidden inputs, iframes, meta tags, and data attributes
 - **Cookie Security Analysis** - Checks for insecure cookie configurations
-- **Window Object Inspection** - Extracts sensitive data from 17 window globals (`__NEXT_DATA__`, `__APOLLO_STATE__`, `__remixContext`, and more)
+- **Window Object Inspection** - Extracts sensitive data and build manifests from 18+ window globals (`__NEXT_DATA__`, `__BUILD_MANIFEST`, `__next_f`, `__APOLLO_STATE__`, `__remixContext`, and more)
 - **Environment Variable Detection** - Flags exposed `REACT_APP_*`, `NEXT_PUBLIC_*`, and `VITE_*` variables
 - **Debug Mode Detection** - Identifies React development builds, Vue devtools, and HMR signals in production
 - **Source Map Detection** - Identifies exposed source maps via headers, comments, and CSS
+
+### Client-Side Attack Surface Intelligence (v0.4.0)
+
+Corrode turns frontend build artifacts into structured manual-testing leads. Everything here is strictly passive — findings describe surface and flows that *exist*; Corrode never constructs or fires a payload. Each is framed as a *lead with evidence* ("validate X here"), never a confirmed exploit.
+
+- **Source-Map Intelligence** - Recovers original source from exposed `.map` assets (GET-only, scoped to the target origin, size/count-capped), then re-scans recovered source for secrets, internal routes/controllers, security-relevant comments, and package versions
+- **Framework Manifest Extraction** - Parses in-page build/route manifests (Next.js `__BUILD_MANIFEST`/`__SSG_MANIFEST`/Flight, Remix route modules, Nuxt payload, SvelteKit, Astro islands, Vite/webpack chunk graphs) into a discovered route surface, including admin/billing/settings and dynamic-route patterns
+- **Client-Side Taint & Gadget Mapping** - Static source→sink flow analysis over the parsed AST (e.g. `location.search → URLSearchParams.get("redirect") → innerHTML`), prototype-pollution surface, a postMessage handler/origin-check mapper, a gadget inventory with exploitability hints, and CSP-bypass correlation against the page's own policy
+- **RSC Deep Passive Mode** - Detects React Server Components Flight endpoints, server-action markers, and App Router evidence, correlated against the RSC CVE table with an explicit observed-vs-inferred evidence level
+- **Confidence Scoring** - Every finding is scored on a confidence axis (orthogonal to severity) from evidence count, source type, first- vs third-party origin, and runtime-observed signals — surfaced as `High severity / Medium confidence` and sorted by confidence within severity in both report formats
 
 ## Installation
 
@@ -118,6 +157,7 @@ cargo build --release
 | Requirement          | Details                                    |
 | -------------------- | ------------------------------------------ |
 | Rust                 | 1.70+ (install from [rustup.rs](https://rustup.rs)) |
+| cmake                | Build-time only — needed by the rustls TLS backend (`sudo apt install cmake` on Debian/Ubuntu, `brew install cmake` on macOS). Not required if you use a prebuilt release tarball. |
 | Chrome/Chromium      | Required for headless scanning (see below) |
 | OS                   | Linux/macOS                                |
 
@@ -333,6 +373,8 @@ Corrode detects React and Next.js vulnerabilities by fingerprinting version stri
 | CVE-2024-46982 | Next.js | High | < 14.2.10 | Cache Poisoning |
 | CVE-2024-51479 | Next.js | High | 14.2.0 – 14.2.15 | Auth Bypass |
 | CVE-2024-56332 | Next.js | Medium | < 15.1.7 | DoS |
+
+> Next.js advisory **CVE-2025-66478** is the same RSC unauthenticated-RCE issue as **CVE-2025-55182** and is counted once, not double-reported.
 
 ## Security Issue Detection
 - **Insecure Cookies** - Missing Secure, HttpOnly, or SameSite flags
