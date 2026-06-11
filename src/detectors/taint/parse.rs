@@ -1,8 +1,3 @@
-//! Shared SWC parse primitives for the taint engine. Mirrors the parse strategy
-//! in `collectors/ast.rs` (ES-then-TS fallback, JSX/TSX on, ES2022) so the
-//! fan-out detectors (`proto`, `postmessage`, `csp`) parse identically without
-//! duplicating it. `pub(crate)`.
-
 use std::sync::Arc;
 
 use swc_common::{BytePos, FileName, SourceMap, Span, DUMMY_SP};

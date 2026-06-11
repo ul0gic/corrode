@@ -1,23 +1,3 @@
-//! Gadget inventory (task 2.6 / 2.7b). Ties the engine's taint flows together
-//! with the sibling fan-out detectors (proto, postMessage, CSP) and classifies
-//! each into a named gadget category with an exploitability hint. Every gadget
-//! is a manual-test lead — Corrode constructs and fires nothing.
-//!
-//! ## Classification
-//!
-//! A `TaintFlow` carries only its sink *label* (the engine flattens `SinkKind`
-//! into a string at assembly), so the category is recovered by matching that
-//! label against the stable labels `sinks.rs` emits. The mapping is the inverse
-//! of `sinks::classify_*`: HTML/code sinks → dom-xss, navigation → open-redirect,
-//! script-load from a URL source → jsonp, framework hatch → unsafe-template.
-//!
-//! ## False-positive stance
-//!
-//! Only flows the engine already proved (tainted source → unsafe sink, with the
-//! safe-sink allowlist applied in `sinks.rs`) become gadgets — no gadget is
-//! invented from a sink alone, except `csp-bypass`, which is explicitly the
-//! "a sink exists and the CSP would not stop it" correlation.
-
 use crate::types::{Gadget, PostMessageHandler, TaintFlow};
 
 use super::csp::Csp;

@@ -1,6 +1,3 @@
-//! Routes and package versions extracted from recovered source paths. Secret
-//! and comment scanning reuse the existing `SecretScanner` at wiring time.
-
 use std::collections::HashSet;
 use std::sync::LazyLock;
 

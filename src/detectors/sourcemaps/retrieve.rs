@@ -1,6 +1,5 @@
-//! Passive source-map retrieval: GET only `.map` URLs the page already
-//! referenced, resolved against the referrer and confined to the target origin.
-//! No guessing, no off-origin follows; count and size are capped.
+//! Passive: GET only `.map` URLs the page already referenced, confined to the
+//! target origin — no guessing, no off-origin follows.
 
 use tokio::time::{self, Duration};
 use url::Url;

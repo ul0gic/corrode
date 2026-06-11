@@ -1,10 +1,3 @@
-//! Taint sinks: DOM/JS operations where attacker-controlled input becomes
-//! dangerous (script execution, HTML injection, navigation). Plus the
-//! safe-sink allowlist that suppresses the dominant false-positive class
-//! (`textContent`, safe `setAttribute`, constant-only assignments).
-//!
-//! `pub(crate)` so the fan-out detectors share one sink vocabulary.
-
 use swc_ecma_ast::{Callee, Expr, MemberExpr, MemberProp};
 
 /// What an attacker gains by reaching this sink. Drives the gadget classifier

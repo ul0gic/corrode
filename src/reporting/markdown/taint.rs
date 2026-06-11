@@ -1,12 +1,4 @@
-//! Pillar 2 — client-side taint & gadget section. Renders the static
-//! source→sink flows, the classified gadget inventory, and the postMessage
-//! handler surface. Every item is a manual-test lead with evidence, never a
-//! confirmed or fired vulnerability.
-//!
-//! Self-contained and not yet wired into `write()` — the live wiring lands at
-//! Gate 2. Mirrors `sourcemaps::render_sourcemap_intel`: `pub(crate)`, takes
-//! `&ScanResult`, returns `Vec<String>`, and is empty when all three source
-//! collections are empty.
+//! Not yet wired into `write()` — the live wiring lands at Gate 2.
 
 use crate::types::{Confidence, ScanResult};
 

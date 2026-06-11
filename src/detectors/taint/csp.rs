@@ -1,13 +1,5 @@
-//! Content-Security-Policy directive parser (task 2.7a). Pure string parsing —
-//! no AST, no network. Turns a `Content-Security-Policy` header value into the
-//! effective `script-src` and answers the bypass questions the sink↔CSP
-//! correlation step (2.7b) asks. Reports surface only; constructs no payload.
-//!
-//! A single header value may carry multiple policies separated by commas, and a
-//! response may send the header more than once. Browsers enforce the
-//! intersection of all delivered policies, so the query methods answer
-//! conservatively: a relaxation is reported only when *every* applicable policy
-//! permits it. Pass several headers as one newline- or comma-joined string.
+//! Browsers enforce the intersection of all delivered policies, so a relaxation
+//! is reported only when every applicable policy permits it.
 
 /// One parsed CSP, holding the effective `script-src` token list (after the
 /// `default-src` fallback) for each delivered policy. Empty `policies` means no

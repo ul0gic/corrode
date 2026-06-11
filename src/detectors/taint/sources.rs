@@ -1,8 +1,3 @@
-//! Taint sources: attacker-influenceable values reachable from a page's own
-//! JavaScript. Each entry recognizes a member-chain or call shape and yields a
-//! stable human-readable label. Catalog is `pub(crate)` so the Phase-2 fan-out
-//! detectors (proto/postmessage/csp) reuse one source vocabulary.
-
 use swc_ecma_ast::{Callee, Expr, MemberExpr, MemberProp};
 
 /// A recognized taint source with its stable human-readable label.

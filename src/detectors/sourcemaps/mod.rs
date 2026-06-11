@@ -1,6 +1,3 @@
-//! Pillar 1 — source-map intelligence: recover routes, versions, and source
-//! text from a page's exposed maps. Passive; see [`retrieve`] for the scoping.
-
 mod intel;
 mod parse;
 mod retrieve;

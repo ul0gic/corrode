@@ -1,10 +1,5 @@
-//! Pillar 1 — source-map & manifest intelligence section. Renders recovered
-//! source maps, the client-side route surface, parsed framework manifests, and
-//! package versions recovered from source-map dependency paths. Every item is a
-//! manual-test lead with evidence, never a confirmed vulnerability.
-//!
-//! RSC findings are `Vulnerability`s rendered by the existing findings section,
-//! so they are intentionally absent here.
+//! RSC findings render in the findings section (they are `Vulnerability`s), so
+//! they are intentionally absent here.
 
 use crate::types::{Confidence, ScanResult};
 

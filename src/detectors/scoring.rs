@@ -1,13 +1,3 @@
-//! Confidence application pass — turns the pure [`confidence::score`] engine into
-//! a per-finding-type scoring sweep over an assembled [`ScanResult`].
-//!
-//! The engine in [`confidence`] is deliberately ignorant of `ScanResult`; this
-//! module owns the domain mapping (which `EvidenceSource` a label implies, how a
-//! JWT role becomes an [`Exploitability`], when a value looks like a placeholder)
-//! and the evidence-count dedup the engine trusts the caller to do. Each
-//! `score_*` helper is pure and individually unit-tested; [`score_all`] is the
-//! single seam called from `scanner/workflow.rs` after all findings are assembled.
-
 use crate::detectors::confidence::{
     self, EntropySignal, Exploitability, FindingCategory, FindingInputs, Origin, Suppressor,
 };

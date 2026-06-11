@@ -1,8 +1,3 @@
-//! Nuxt (§3), `SvelteKit` (§5), Astro (§4), and Vite/webpack chunk graphs (§6/§7).
-//! Tier A only. None ship a full client route table inline the way Next/Remix do,
-//! so these recover the current route, build fingerprint, and component surface;
-//! full route enumeration is left to source-map / chunk recovery (Tier B at the gate).
-
 use std::sync::LazyLock;
 
 use regex::Regex;

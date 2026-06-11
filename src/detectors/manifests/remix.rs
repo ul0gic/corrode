@@ -1,7 +1,3 @@
-//! Remix manifest parsing (brief §2). Tier A: `window.__remixManifest` (or
-//! `__remixContext.manifest`) is captured in-page. Routes are reconstructed by
-//! walking the `parentId` chain; `$param`/splat segments become `:param`/`*`.
-
 use serde_json::Value;
 
 use super::routes::RouteSet;

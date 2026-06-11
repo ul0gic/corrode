@@ -1,10 +1,3 @@
-//! The taint pass: an `swc_ecma_visit::Visit` that tracks source→sink
-//! propagation **within a single function scope** of a single script. Cross-
-//! function and cross-file flow are deliberately not tracked — that bounds the
-//! analysis and is the primary false-positive control (see module docs in
-//! `mod.rs`). `pub(crate)` so fan-out detectors can run their own pass with the
-//! shared catalogs.
-
 use std::collections::HashMap;
 
 use swc_common::{Span, Spanned};

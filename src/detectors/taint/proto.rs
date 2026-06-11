@@ -1,10 +1,3 @@
-//! Prototype-pollution surface detector (task 2.4). A URL/query/hash (or other
-//! cataloged) source reaching a pollution-shaped sink — a `__proto__` /
-//! `constructor` / `prototype` write, a deep-merge/extend/deep-set helper, or a
-//! tainted computed-key assignment — is reported as a SURFACE: a manual-test
-//! lead, never a fired payload. Mirrors the engine's intra-function, intra-
-//! script scoping (see `mod.rs`) as the primary false-positive control.
-
 use std::collections::HashMap;
 
 use swc_common::{Span, Spanned};

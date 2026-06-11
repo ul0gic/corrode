@@ -1,13 +1,3 @@
-//! Passive React Server Components surface detection. Grades the RSC/App Router
-//! attack surface against the CVE table in [`super::react`] with an explicit
-//! evidence level: **observed** (a vulnerable `react-server-dom-*` version was
-//! seen in script text) vs **inferred** (App Router + Flight markers present but
-//! the version is unknown — advisory-level only).
-//!
-//! The version-keyed CVE logic lives in [`super::react::detect_rsc_vulns`] and is
-//! reused verbatim; this module only adds surface fingerprinting and the inferred
-//! advisory, so the version tables are never forked.
-
 use std::collections::HashMap;
 use std::sync::LazyLock;
 

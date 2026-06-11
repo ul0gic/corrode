@@ -1,12 +1,6 @@
-//! Confidence scoring engine — the orthogonal-to-severity "how sure are we?" axis.
-//!
-//! Pure, deterministic, additive-then-clamp scoring over a small [`FindingInputs`]
-//! value struct. The scorer never reaches into `ScanResult`; callers build
-//! `FindingInputs` from their own domain knowledge and own evidence-count dedup.
-//!
-//! Model spec: `.project/research/confidence-model-brief.md`. Weights live as named
-//! `const`s below so false-positive tuning (task 4.4) is a one-line edit.
-//
+//! The scorer never reaches into `ScanResult`; callers build [`FindingInputs`]
+//! from their own domain knowledge and own evidence-count dedup.
+
 use crate::types::{Confidence, ConfidenceFactor, ConfidenceLevel, EvidenceSource};
 
 // --- Weights (brief §3). Tuning is a one-line change here. ---

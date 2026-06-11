@@ -1,16 +1,5 @@
-//! Pillar 1 — framework manifest intelligence: client-side route/build manifests
-//! parsed from already-captured in-page state (brief §1–§7). Tier A only — pure,
-//! synchronous, no network. Tier-B chunk-bundle fetches are wired by the Lead at
-//! the gate; this module never fetches.
-//!
-//! ## Collector inputs
-//! `collectors::javascript` supplies the captured globals (`__NEXT_DATA__`,
-//! `__BUILD_MANIFEST`, `__SSG_MANIFEST` — its `Set` normalized to an array before
-//! stringify, `__next_f`, `__remixManifest`/`__remixContext`, `__NUXT__`,
-//! `__sveltekit_data`) plus two non-`window` inputs: `chunk_names` (modulepreload
-//! hrefs + `<script src>` URLs) and `astro_islands` (`<astro-island>` attribute
-//! JSON — Astro has no `window` global). Every parser degrades gracefully on a
-//! truncated or unparseable value.
+//! Tier A only — pure and synchronous over already-captured in-page state; this
+//! module never fetches.
 
 mod nextjs;
 mod others;

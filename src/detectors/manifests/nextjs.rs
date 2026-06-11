@@ -1,7 +1,3 @@
-//! Next.js manifest parsing (brief §1): `__NEXT_DATA__` (Pages Router),
-//! `__BUILD_MANIFEST`, `__SSG_MANIFEST`, and the App Router `__next_f` Flight
-//! stream. Tier A only — every value is read from already-captured in-page state.
-
 use std::sync::LazyLock;
 
 use regex::Regex;

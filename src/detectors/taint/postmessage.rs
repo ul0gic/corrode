@@ -1,30 +1,3 @@
-//! postMessage receive-surface mapper (task 2.5). Locates `message`-event
-//! handlers and classifies their origin validation, the dominant postMessage
-//! footgun: a handler that trusts `event.data` without checking `event.origin`
-//! is an attacker-reachable entry point. Also flags wildcard `targetOrigin`
-//! ("*") on `postMessage` *sends*, which leak the message to any frame.
-//!
-//! Surface only — Corrode reports a manual-test lead and never fires a message.
-//! `pub(crate)` like the sibling fan-out detectors; consumes the shared engine
-//! (`parse`, `sinks`) and never edits it.
-//!
-//! ## Origin-check classification
-//!
-//! - `strict` — an `===`/`!==` comparison against `event.origin` (or a `.origin`
-//!   read on the handler param). Exact-match validation.
-//! - `weak`   — `event.origin` reaches a substring/prefix footgun:
-//!   `.includes` / `.startsWith` / `.indexOf` / `.match` / `.test`. These pass
-//!   `https://evil.com?https://trusted.com` and similar bypasses.
-//! - `none`   — the handler never reads `event.origin` at all.
-//!
-//! ## False-positive control
-//!
-//! Only handlers genuinely registered for the `"message"` event are emitted:
-//! `addEventListener("message", fn)` with a string-literal event name, or an
-//! `onmessage = fn` / `obj.onmessage = fn` assignment. `addEventListener` calls
-//! for other events, and computed/dynamic event names, are skipped — we cannot
-//! prove they are message handlers, and a false postMessage lead is noise.
-
 use swc_common::{Span, Spanned};
 use swc_ecma_ast::{
     ArrowExpr, AssignExpr, AssignTarget, BinExpr, BinaryOp, CallExpr, Callee, Expr, FnExpr, Lit,

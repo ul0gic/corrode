@@ -1,5 +1,4 @@
-//! Shared route-template helpers: dedupe and dynamic-segment detection across
-//! the per-framework parsers. Templates are reported verbatim, never instantiated.
+//! Route templates are reported verbatim, never instantiated.
 
 use std::collections::HashSet;
 

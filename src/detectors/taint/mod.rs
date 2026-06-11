@@ -1,31 +1,5 @@
-//! Pillar 2 — client-side taint & gadget mapping. A static source→sink pass
-//! over a page's JavaScript that reports DOM-XSS-shaped flows as manual-test
-//! leads. **Reported, never fired** — Corrode constructs no payloads.
-//!
-//! ## Design for the fan-out
-//!
-//! Three sibling detectors build on this engine, each in its own file:
-//! [`proto`] (prototype-pollution), [`postmessage`], [`csp`]. They consume the
-//! shared `pub(crate)` surface and must not need edits here:
-//!
-//! - [`parse::parse_script`] / [`parse::ParsedModule`] — the shared SWC parse
-//!   (ES-then-TS, JSX/TSX) and span→`file:line:col` resolution.
-//! - [`sources`] — `classify_expr`, `classify_bare_ident`,
-//!   `classify_message_data`, plus `SourceMatch`.
-//! - [`sinks`] — `classify_call`, `classify_assign_target`,
-//!   `classify_assign_ident`, `classify_new`, `classify_framework_hatch`,
-//!   `is_safe_property`, `is_safe_attribute`, plus `SinkKind` / `SinkMatch`.
-//! - [`visitor::run`] / [`visitor::RawFlow`] — the intra-function taint pass.
-//!
-//! Add a sibling by declaring `pub(crate) mod <name>;` below.
-//!
-//! ## Why intra-function, intra-script
-//!
-//! The taint environment is reset at every function boundary and never crosses
-//! files. This is the primary false-positive control: a variable tainted in one
-//! function is invisible in another, so we never invent a flow that the code
-//! cannot actually realize in one scope. The cost is missed cross-function
-//! flows — an acceptable trade for the plan's high-signal / low-FP stance.
+//! Taint is reset at every function boundary and never crosses files — the
+//! primary false-positive control. Widening scope reintroduces unrealizable flows.
 
 pub(crate) mod csp;
 pub(crate) mod gadgets;
