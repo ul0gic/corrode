@@ -7,6 +7,7 @@ mod remix;
 mod routes;
 
 use std::collections::HashMap;
+use std::hash::BuildHasher;
 
 use crate::types::{FrameworkManifest, RouteSurface};
 
@@ -29,8 +30,8 @@ pub struct ManifestReport {
 
 /// `technologies` gates each parser, so absent frameworks cost nothing; pass empty
 /// `chunk_names`/`astro_islands` until the gate wires them.
-pub fn analyze(
-    window_objects: &HashMap<String, String>,
+pub fn analyze<S: BuildHasher>(
+    window_objects: &HashMap<String, String, S>,
     technologies: &[String],
     chunk_names: &[String],
     astro_islands: &[String],

@@ -10,7 +10,7 @@ const MAX_GADGETS: usize = 200;
 
 /// `csp` is the page's `Content-Security-Policy` value, used for the bypass
 /// correlation (2.7b); `scripts` is `(source_text, source_url)`.
-pub(crate) fn inventory(scripts: &[(&str, &str)], csp: Option<&str>) -> Vec<Gadget> {
+pub fn inventory(scripts: &[(&str, &str)], csp: Option<&str>) -> Vec<Gadget> {
     let flows = analyze(scripts);
     let protos = proto::detect(scripts);
     let handlers = postmessage::detect(scripts);

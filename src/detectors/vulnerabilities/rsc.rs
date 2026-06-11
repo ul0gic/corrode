@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::hash::BuildHasher;
 use std::sync::LazyLock;
 
 use regex::Regex;
@@ -47,9 +48,9 @@ impl RscSurface {
 
 /// Fingerprint the RSC surface from script text and captured window globals.
 /// `scripts` are `(text, source_url)` slices, matching [`super::react`]'s shape.
-pub fn fingerprint(
+pub fn fingerprint<S: BuildHasher>(
     scripts: &[(&str, &str)],
-    window_objects: &HashMap<String, String>,
+    window_objects: &HashMap<String, String, S>,
 ) -> RscSurface {
     let mut surface = RscSurface::default();
 
@@ -82,9 +83,9 @@ pub fn fingerprint(
 
 /// Two evidence tiers kept distinct in text and severity: observed (graded CVEs from
 /// [`detect_rsc_vulns`]) vs inferred (a low-severity lead when the surface but no version is seen).
-pub fn detect(
+pub fn detect<S: BuildHasher>(
     scripts: &[(&str, &str)],
-    window_objects: &HashMap<String, String>,
+    window_objects: &HashMap<String, String, S>,
 ) -> Vec<Vulnerability> {
     let surface = fingerprint(scripts, window_objects);
 

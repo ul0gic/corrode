@@ -3,7 +3,7 @@ mod findings;
 mod network;
 mod security;
 mod sourcemaps;
-mod summary;
+pub mod summary;
 mod taint;
 mod technologies;
 

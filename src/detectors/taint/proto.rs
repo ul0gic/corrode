@@ -13,22 +13,22 @@ use super::sources::{self, SourceMatch};
 /// A prototype-pollution surface: a tainted source reaching a pollution-shaped
 /// sink. `path` is the variable/transform hops between them. Reported as a lead.
 #[derive(Debug, Clone)]
-pub(crate) struct ProtoFinding {
+pub struct ProtoFinding {
     source: String,
     sink: String,
     location: String,
 }
 
 impl ProtoFinding {
-    pub(crate) fn source(&self) -> &str {
+    pub fn source(&self) -> &str {
         &self.source
     }
 
-    pub(crate) fn sink(&self) -> &str {
+    pub fn sink(&self) -> &str {
         &self.sink
     }
 
-    pub(crate) fn location(&self) -> &str {
+    pub fn location(&self) -> &str {
         &self.location
     }
 }
@@ -59,7 +59,7 @@ const MERGE_HELPERS: &[&str] = &[
 
 /// Scan a corpus of `(source_text, source_url)` scripts for prototype-pollution
 /// surfaces. Unparseable/oversized scripts are skipped silently (no panic).
-pub(crate) fn detect(scripts: &[(&str, &str)]) -> Vec<ProtoFinding> {
+pub fn detect(scripts: &[(&str, &str)]) -> Vec<ProtoFinding> {
     let mut findings = Vec::new();
     for (text, url) in scripts {
         let Some(parsed) = parse::parse_script(text, url) else {

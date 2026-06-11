@@ -1,6 +1,6 @@
-mod intel;
-mod parse;
-mod retrieve;
+pub mod intel;
+pub mod parse;
+pub mod retrieve;
 
 use crate::types::{RouteSurface, SourceMapIntel, TechnologyVersion};
 

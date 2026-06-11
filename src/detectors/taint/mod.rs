@@ -2,10 +2,10 @@
 //! primary false-positive control. Widening scope reintroduces unrealizable flows.
 
 pub(crate) mod csp;
-pub(crate) mod gadgets;
+pub mod gadgets;
 pub(crate) mod parse;
-pub(crate) mod postmessage;
-pub(crate) mod proto;
+pub mod postmessage;
+pub mod proto;
 pub(crate) mod sinks;
 pub(crate) mod sources;
 pub(crate) mod visitor;

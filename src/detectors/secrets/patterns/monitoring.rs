@@ -32,7 +32,10 @@ pub fn patterns() -> Vec<(&'static str, Regex)> {
             "datadog_app_key",
             Regex::new(r#"(?i)(?:datadog|dd_app|DD_APP_KEY)[\w.\-]{0,20}[\s'"]{0,3}(?:=|:|=>)[\s'"]{0,5}([a-f0-9]{40})\b"#).unwrap(),
         ),
-        // PagerDuty REST API Key (20 chars + context)
+        // PagerDuty REST API Key: exactly 20 chars after a pagerduty-ish context key.
+        // The value has no verifiable structure, so it can't be told apart from a generic
+        // 20-char identifier on shape alone; the scoring engine downgrades its confidence
+        // (SEC-002, see scoring::exploitability_for_pattern).
         (
             "pagerduty_api_key",
             Regex::new(r#"(?i)(?:pagerduty|pd_api|PD_TOKEN)[\w.\-]{0,20}[\s'"]{0,3}(?:=|:|=>)[\s'"]{0,5}([A-Za-z0-9_+]{20})\b"#).unwrap(),

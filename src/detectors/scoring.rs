@@ -186,6 +186,10 @@ fn exploitability_for_pattern(pattern_name: &str) -> Exploitability {
         | "stripe_publishable_key"
         | "mapbox_pk"
         | "sentry_dsn" => Exploitability::Benign,
+        // Context-keyword-gated but structureless: a 20-char value that can't be told
+        // apart from a generic identifier. Downgraded so it can't reach High on its own
+        // without corroboration (SEC-002).
+        "pagerduty_api_key" => Exploitability::PreconditionUnmet,
         _ => Exploitability::None,
     }
 }
@@ -497,6 +501,27 @@ mod tests {
         let service = score_secret("supabase_service_role", &f, Some("example.com"));
         let anon = score_secret("supabase_anon_jwt", &f, Some("example.com"));
         assert!(anon.score < service.score);
+    }
+
+    #[test]
+    fn pagerduty_api_key_is_downgraded_below_high() {
+        // SEC-002: a structureless 20-char value (the common case is a config literal
+        // in inline page text) can't be told apart from a generic identifier, so it must
+        // not reach High on a static, uncorroborated hit and must score below a
+        // structured secret of the same shape and provenance.
+        let value = "u+Abc123456789012345";
+        let f = secret("Inline Script", value);
+
+        let pagerduty = score_secret("pagerduty_api_key", &f, Some("example.com"));
+        assert_ne!(pagerduty.level, ConfidenceLevel::High);
+
+        let structured = score_secret("stripe_secret_key", &f, Some("example.com"));
+        assert!(
+            pagerduty.score < structured.score,
+            "pagerduty ({}) must score below a structured key ({})",
+            pagerduty.score,
+            structured.score
+        );
     }
 
     #[test]

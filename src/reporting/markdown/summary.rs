@@ -1,7 +1,7 @@
 use crate::types::{Confidence, ConfidenceLevel, ScanResult};
 
 /// Human label for a confidence level, e.g. `Medium confidence`.
-pub(crate) fn confidence_label(level: ConfidenceLevel) -> &'static str {
+pub fn confidence_label(level: ConfidenceLevel) -> &'static str {
     match level {
         ConfidenceLevel::High => "High confidence",
         ConfidenceLevel::Medium => "Medium confidence",
@@ -11,7 +11,7 @@ pub(crate) fn confidence_label(level: ConfidenceLevel) -> &'static str {
 
 /// Render `Severity / Confidence` when a finding is scored, else just the
 /// severity (back-compat: an unscored `None` confidence renders nothing extra).
-pub(crate) fn severity_confidence(severity: &str, confidence: Option<&Confidence>) -> String {
+pub fn severity_confidence(severity: &str, confidence: Option<&Confidence>) -> String {
     match confidence {
         Some(c) => format!("{severity} severity / {}", confidence_label(c.level)),
         None => format!("{severity} severity"),

@@ -15,7 +15,7 @@ const MAX_HANDLERS: usize = 200;
 
 /// Map the `postMessage` receive/send surface; `scripts` is `(source_text, source_url)`.
 /// Unparseable scripts are skipped silently (no panic on hostile input).
-pub(crate) fn detect(scripts: &[(&str, &str)]) -> Vec<PostMessageHandler> {
+pub fn detect(scripts: &[(&str, &str)]) -> Vec<PostMessageHandler> {
     let mut out = Vec::new();
     for (text, url) in scripts {
         let Some(parsed) = parse::parse_script(text, url) else {

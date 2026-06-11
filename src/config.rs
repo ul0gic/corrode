@@ -183,6 +183,16 @@ pub fn merge_config_file(config: &mut Config, file: &ConfigFile) {
 
 /// Parse a URL file (one URL per line, skip blanks and `#` comments).
 /// Validates each URL starts with `http://` or `https://`.
+/// Truncate to at most `max` chars on a char boundary, appending `...` when cut,
+/// so an oversized invalid line can't flood the error message (SEC-006).
+fn truncate_display(value: &str, max: usize) -> String {
+    if value.chars().count() <= max {
+        return value.to_owned();
+    }
+    let head: String = value.chars().take(max).collect();
+    format!("{head}...")
+}
+
 pub fn parse_url_file(path: &Path) -> Result<Vec<String>> {
     let content = fs::read_to_string(path)
         .with_context(|| format!("Failed to read URL file: {}", path.display()))?;
@@ -194,11 +204,12 @@ pub fn parse_url_file(path: &Path) -> Result<Vec<String>> {
             continue;
         }
         if !trimmed.starts_with("http://") && !trimmed.starts_with("https://") {
+            let shown = truncate_display(trimmed, 80);
             anyhow::bail!(
                 "Invalid URL on line {} of {}: '{}' (must start with http:// or https://)",
                 line_num + 1,
                 path.display(),
-                trimmed
+                shown
             );
         }
         urls.push(trimmed.to_owned());

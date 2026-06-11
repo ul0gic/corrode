@@ -59,10 +59,11 @@ pub fn patterns() -> Vec<(&'static str, Regex)> {
             "azure_storage_connection",
             Regex::new(r"DefaultEndpointsProtocol=https?;AccountName=[a-z0-9]+;AccountKey=[A-Za-z0-9+/=]{86,88}").unwrap(),
         ),
-        // Azure AD Client Secret (contains Q~ marker)
+        // Azure AD Client Secret (contains the `Q~` marker). \b-anchored so it cannot
+        // match inside a larger bundle token (SEC-010).
         (
             "azure_ad_client_secret",
-            Regex::new(r"[A-Za-z0-9_~.]{3}\dQ~[A-Za-z0-9_~.\-]{31,34}").unwrap(),
+            Regex::new(r"\b[A-Za-z0-9_~.]{3}\dQ~[A-Za-z0-9_~.\-]{31,34}\b").unwrap(),
         ),
         // Azure SAS Token with signature
         (
