@@ -1,4 +1,5 @@
 pub mod collectors;
+pub mod confidence;
 pub mod manifests;
 pub mod secrets;
 pub mod security;
