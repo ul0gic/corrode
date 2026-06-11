@@ -64,17 +64,6 @@ impl Csp {
         self.all_constraining_policies(|p| sources_are_broad(&p.sources))
     }
 
-    /// The effective `script-src` token list. With multiple policies this is the
-    /// strictest (fewest tokens) constraining one — the policy that bounds what a
-    /// script load must satisfy. `None` when no policy constrains scripts.
-    pub(crate) fn effective_script_src(&self) -> Option<&[String]> {
-        self.policies
-            .iter()
-            .filter(|p| p.present)
-            .min_by_key(|p| p.sources.len())
-            .map(|p| p.sources.as_slice())
-    }
-
     /// Run `pred` against every policy that actually constrains scripts. A
     /// relaxation holds only if all such policies agree; a policy that does not
     /// constrain scripts cannot tighten the others, so it is skipped.
@@ -210,10 +199,6 @@ mod tests {
     fn missing_script_src_falls_back_to_default_src() {
         let csp = Csp::parse("default-src 'self' 'unsafe-inline'");
         assert!(csp.allows_unsafe_inline_scripts());
-        assert_eq!(
-            csp.effective_script_src(),
-            Some(["'self'".to_owned(), "'unsafe-inline'".to_owned()].as_slice())
-        );
     }
 
     #[test]
@@ -221,7 +206,6 @@ mod tests {
         let csp = Csp::parse("img-src 'self'; style-src 'self'");
         assert!(csp.has_broad_script_src());
         assert!(!csp.allows_unsafe_inline_scripts());
-        assert!(csp.effective_script_src().is_none());
     }
 
     #[test]
@@ -242,7 +226,6 @@ mod tests {
         assert!(!Csp::parse("").allows_unsafe_inline_scripts());
         assert!(Csp::parse("").has_broad_script_src());
         assert!(!Csp::parse("   \n  ").allows_unsafe_inline_scripts());
-        assert!(Csp::parse("   ").effective_script_src().is_none());
     }
 
     #[test]
@@ -258,7 +241,6 @@ mod tests {
             let _ = csp.allows_unsafe_inline_scripts();
             let _ = csp.allows_unsafe_eval();
             let _ = csp.has_broad_script_src();
-            let _ = csp.effective_script_src();
         }
     }
 
@@ -295,14 +277,5 @@ mod tests {
         // constraint). The broad one is the only constraint on scripts.
         let csp = Csp::parse("script-src *, img-src 'self'");
         assert!(csp.has_broad_script_src());
-    }
-
-    #[test]
-    fn effective_script_src_picks_strictest_policy() {
-        let csp = Csp::parse("script-src 'self' https://a https://b, script-src 'self'");
-        assert_eq!(
-            csp.effective_script_src(),
-            Some(["'self'".to_owned()].as_slice())
-        );
     }
 }

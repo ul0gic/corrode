@@ -18,7 +18,7 @@ use crate::detectors::{
     manifests,
     secrets::SecretScanner,
     security::analyze_security,
-    sourcemaps, technologies, vulnerabilities,
+    sourcemaps, taint, technologies, vulnerabilities,
 };
 use crate::network::monitor::NetworkMonitor;
 use crate::reporting::{json as json_report, markdown};
@@ -545,6 +545,22 @@ async fn scan_url(
         }
     }
 
+    // Pillar 2 — client-side taint & gadget mapping over the first-party script
+    // corpus. Static and passive: flows are reported, never fired. CSP for the
+    // bypass correlation comes from the document response, if present.
+    let csp_header = all_calls
+        .iter()
+        .find(|c| c.url == url || c.url.starts_with(&url))
+        .and_then(|c| {
+            c.response_headers
+                .get("content-security-policy")
+                .or_else(|| c.response_headers.get("Content-Security-Policy"))
+        })
+        .map(String::as_str);
+    let taint_flows = taint::analyze(&script_refs);
+    let post_message_handlers = taint::postmessage::detect(&script_refs);
+    let gadgets = taint::gadgets::inventory(&script_refs, csp_header);
+
     let result = ScanResult {
         url: url.clone(),
         timestamp: Utc::now().to_rfc3339(),
@@ -586,9 +602,9 @@ async fn scan_url(
         source_maps_intel: source_map_report.intel,
         framework_manifests,
         route_surface,
-        taint_flows: vec![],
-        gadgets: vec![],
-        post_message_handlers: vec![],
+        taint_flows,
+        gadgets,
+        post_message_handlers,
         success: true,
         error: None,
     };

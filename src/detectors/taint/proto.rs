@@ -23,7 +23,6 @@ use super::sources::{self, SourceMatch};
 pub(crate) struct ProtoFinding {
     source: String,
     sink: String,
-    path: Vec<String>,
     location: String,
 }
 
@@ -184,7 +183,6 @@ impl<'a> ProtoVisitor<'a> {
         self.findings.push(ProtoFinding {
             source: mark.source.label.clone(),
             sink,
-            path: mark.path.clone(),
             location: self.loc(span),
         });
     }
@@ -374,10 +372,6 @@ mod tests {
         let findings = detect_one(src);
         assert_eq!(findings.len(), 1, "{findings:?}");
         assert!(findings[0].sink.contains("deep-merge"));
-        assert!(
-            !findings[0].path.is_empty(),
-            "expected hops through payload"
-        );
     }
 
     #[test]

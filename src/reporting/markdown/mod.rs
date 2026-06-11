@@ -4,8 +4,6 @@ mod network;
 mod security;
 mod sourcemaps;
 mod summary;
-// Self-contained; wired into write() at Gate 2.
-#[cfg(test)]
 mod taint;
 mod technologies;
 
@@ -36,6 +34,7 @@ pub fn write(result: &ScanResult, base_output_dir: &Path) -> Result<()> {
     report.extend(network::render_network(result));
     report.extend(technologies::render_dom(result)?);
     report.extend(sourcemaps::render_sourcemap_intel(result));
+    report.extend(taint::render_taint(result));
     report.extend(appendix::render_appendix(result));
     report.extend(appendix::render_recommendations(result));
 

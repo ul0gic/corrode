@@ -11,7 +11,7 @@
 //! - [`parse::parse_script`] / [`parse::ParsedModule`] — the shared SWC parse
 //!   (ES-then-TS, JSX/TSX) and span→`file:line:col` resolution.
 //! - [`sources`] — `classify_expr`, `classify_bare_ident`,
-//!   `classify_message_data`, plus `SourceKind` / `SourceMatch`.
+//!   `classify_message_data`, plus `SourceMatch`.
 //! - [`sinks`] — `classify_call`, `classify_assign_target`,
 //!   `classify_assign_ident`, `classify_new`, `classify_framework_hatch`,
 //!   `is_safe_property`, `is_safe_attribute`, plus `SinkKind` / `SinkMatch`.
@@ -26,9 +26,6 @@
 //! function is invisible in another, so we never invent a flow that the code
 //! cannot actually realize in one scope. The cost is missed cross-function
 //! flows — an acceptable trade for the plan's high-signal / low-FP stance.
-
-// Unwired until Gate 2; mirrors `sourcemaps`/`manifests` during their build.
-#![allow(dead_code)]
 
 pub(crate) mod csp;
 pub(crate) mod gadgets;
@@ -91,6 +88,9 @@ fn dedupe(mut flows: Vec<TaintFlow>) -> Vec<TaintFlow> {
 /// carries. Empty/very short observed values are ignored so a stray `""` or a
 /// single character cannot promote every flow (the low-FP stance applies here
 /// too).
+// Task 2.8 runtime-enrichment seam: live observed-value capture is deliberately
+// deferred (runtime value capture is out of scope under the passive guardrail).
+#[allow(dead_code)]
 pub fn mark_runtime_observed(flows: &mut [TaintFlow], observed_values: &[String]) {
     let signals: Vec<&str> = observed_values
         .iter()
@@ -225,6 +225,37 @@ mod tests {
         let flows = analyze_one(src);
         assert_eq!(flows.len(), 1, "{flows:?}");
         assert!(flows[0].source.contains("data"));
+    }
+
+    #[test]
+    fn set_attribute_href_with_tainted_value_is_flow() {
+        let src = r#"
+            const u = location.hash;
+            el.setAttribute("href", u);
+        "#;
+        let flows = analyze_one(src);
+        assert_eq!(flows.len(), 1, "{flows:?}");
+        assert!(flows[0].sink.contains("setAttribute"));
+    }
+
+    #[test]
+    fn set_attribute_safe_name_is_not_flow() {
+        let src = r#"
+            const u = location.hash;
+            el.setAttribute("class", u);
+        "#;
+        assert!(analyze_one(src).is_empty());
+    }
+
+    #[test]
+    fn set_attribute_event_handler_with_tainted_value_is_flow() {
+        let src = r#"
+            const u = location.hash;
+            el.setAttribute("onclick", u);
+        "#;
+        let flows = analyze_one(src);
+        assert_eq!(flows.len(), 1, "{flows:?}");
+        assert!(flows[0].sink.contains("setAttribute"));
     }
 
     fn sample_flow(source: &str, sink: &str) -> TaintFlow {

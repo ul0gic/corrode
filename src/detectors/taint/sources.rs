@@ -5,29 +5,10 @@
 
 use swc_ecma_ast::{Callee, Expr, MemberExpr, MemberProp};
 
-/// Coarse classification used by downstream gadget/postMessage detectors to
-/// reason about a flow without re-parsing its label.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum SourceKind {
-    /// `location.*`, `document.URL`, hash/fragment, `URLSearchParams`.
-    Url,
-    /// `document.referrer`.
-    Referrer,
-    /// `window.name`.
-    WindowName,
-    /// `localStorage` / `sessionStorage` reads.
-    Storage,
-    /// `document.cookie`.
-    Cookie,
-    /// A `message` event's `.data` (postMessage).
-    PostMessage,
-}
-
-/// A recognized taint source with its stable label and kind.
+/// A recognized taint source with its stable human-readable label.
 #[derive(Debug, Clone)]
 pub(crate) struct SourceMatch {
     pub label: String,
-    pub kind: SourceKind,
 }
 
 /// Classify an expression as a taint source, if it is one. Recognizes member
@@ -51,7 +32,6 @@ fn classify_new(callee: &Expr) -> Option<SourceMatch> {
     match name {
         "URLSearchParams" | "URL" => Some(SourceMatch {
             label: format!("new {name}(...)"),
-            kind: SourceKind::Url,
         }),
         _ => None,
     }
@@ -72,13 +52,11 @@ fn classify_call(call: &swc_ecma_ast::CallExpr) -> Option<SourceMatch> {
     match (object.as_deref(), method) {
         (Some("localStorage" | "sessionStorage"), "getItem") => Some(SourceMatch {
             label: format!("{}.getItem(...)", object?),
-            kind: SourceKind::Storage,
         }),
         // `.get(...)` on a URLSearchParams-ish receiver. We only accept it when
         // the receiver name hints at search params, to avoid map/cache `.get`.
         (Some(obj), "get") if is_search_params_name(obj) => Some(SourceMatch {
             label: format!("{obj}.get(...)"),
-            kind: SourceKind::Url,
         }),
         _ => None,
     }
@@ -94,29 +72,23 @@ fn classify_member(member: &MemberExpr) -> Option<SourceMatch> {
     match (object.as_deref(), prop) {
         (Some("location"), "href" | "search" | "hash" | "pathname") => Some(SourceMatch {
             label: format!("location.{prop}"),
-            kind: SourceKind::Url,
         }),
         (Some("document"), "URL" | "documentURI") => Some(SourceMatch {
             label: format!("document.{prop}"),
-            kind: SourceKind::Url,
         }),
         (Some("document"), "referrer") => Some(SourceMatch {
             label: "document.referrer".to_owned(),
-            kind: SourceKind::Referrer,
         }),
         (Some("document"), "cookie") => Some(SourceMatch {
             label: "document.cookie".to_owned(),
-            kind: SourceKind::Cookie,
         }),
         (Some("window" | "self" | "top"), "name") => Some(SourceMatch {
             label: "window.name".to_owned(),
-            kind: SourceKind::WindowName,
         }),
         // `event.data` / `e.data` / `msg.data`: only treated as a source when
         // the visitor is inside a `message`-event handler (see visitor.rs).
         (_, "searchParams") => Some(SourceMatch {
             label: "location.searchParams".to_owned(),
-            kind: SourceKind::Url,
         }),
         _ => None,
     }
@@ -128,7 +100,6 @@ pub(crate) fn classify_bare_ident(expr: &Expr) -> Option<SourceMatch> {
     match ident_name(expr)? {
         "location" => Some(SourceMatch {
             label: "location".to_owned(),
-            kind: SourceKind::Url,
         }),
         _ => None,
     }
@@ -143,7 +114,6 @@ pub(crate) fn classify_message_data(member: &MemberExpr, event_param: &str) -> O
     if prop == "data" && object.as_deref() == Some(event_param) {
         return Some(SourceMatch {
             label: format!("{event_param}.data"),
-            kind: SourceKind::PostMessage,
         });
     }
     None
@@ -193,20 +163,19 @@ mod tests {
     #[test]
     fn recognizes_location_search() {
         let m = classify("location.search").expect("source");
-        assert_eq!(m.kind, SourceKind::Url);
         assert_eq!(m.label, "location.search");
     }
 
     #[test]
     fn recognizes_storage_get_item() {
         let m = classify("localStorage.getItem('k')").expect("source");
-        assert_eq!(m.kind, SourceKind::Storage);
+        assert_eq!(m.label, "localStorage.getItem(...)");
     }
 
     #[test]
     fn recognizes_url_search_params_ctor() {
         let m = classify("new URLSearchParams(location.search)").expect("source");
-        assert_eq!(m.kind, SourceKind::Url);
+        assert_eq!(m.label, "new URLSearchParams(...)");
     }
 
     #[test]
@@ -225,12 +194,12 @@ mod tests {
     #[test]
     fn referrer_and_cookie_classified() {
         assert_eq!(
-            classify("document.referrer").map(|m| m.kind),
-            Some(SourceKind::Referrer)
+            classify("document.referrer").map(|m| m.label),
+            Some("document.referrer".to_owned())
         );
         assert_eq!(
-            classify("document.cookie").map(|m| m.kind),
-            Some(SourceKind::Cookie)
+            classify("document.cookie").map(|m| m.label),
+            Some("document.cookie".to_owned())
         );
     }
 

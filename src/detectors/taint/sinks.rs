@@ -97,7 +97,13 @@ pub(crate) fn classify_call(call: &swc_ecma_ast::CallExpr) -> Option<SinkMatch> 
     };
     match &**callee {
         Expr::Ident(ident) => classify_global_call(ident.sym.as_ref()),
-        Expr::Member(member) => classify_method_call(member),
+        Expr::Member(member) => {
+            if member_prop(&member.prop) == Some("setAttribute") {
+                classify_set_attribute(call)
+            } else {
+                classify_method_call(member)
+            }
+        }
         _ => None,
     }
 }
@@ -149,6 +155,45 @@ fn classify_method_call(member: &MemberExpr) -> Option<SinkMatch> {
             label: format!("location.{method}(...)"),
             kind: SinkKind::Navigation,
         }),
+        _ => None,
+    }
+}
+
+/// `el.setAttribute(name, value)` is a sink only when the attribute name is a
+/// constant string that `is_safe_attribute` rejects — an `on*` handler or a
+/// known script-bearing attribute. A constant safe name, or a non-constant
+/// (computed) name we cannot inspect, is not recorded (the low-FP stance).
+/// Kind is chosen by attribute: navigation vectors (`href`/`src`/`action`/
+/// `formaction`/`xlink:href`) → `Navigation`; `srcdoc` → `FrameContent`; `on*`
+/// handlers → `CodeExecution`; everything else dangerous (`style`) →
+/// `HtmlInjection`.
+fn classify_set_attribute(call: &swc_ecma_ast::CallExpr) -> Option<SinkMatch> {
+    let name = string_literal_arg(call, 0)?;
+    let lower = name.to_ascii_lowercase();
+    if is_safe_attribute(&lower) {
+        return None;
+    }
+    let kind = if lower.starts_with("on") {
+        SinkKind::CodeExecution
+    } else {
+        match lower.as_str() {
+            "href" | "src" | "action" | "formaction" | "xlink:href" => SinkKind::Navigation,
+            "srcdoc" => SinkKind::FrameContent,
+            _ => SinkKind::HtmlInjection,
+        }
+    };
+    Some(SinkMatch {
+        label: format!("setAttribute(\"{lower}\", ...)"),
+        kind,
+    })
+}
+
+/// The string-literal value of the call argument at `index`, or `None` when the
+/// argument is absent or not a plain string literal (computed names cannot be
+/// classified, so they are conservatively not sinks).
+fn string_literal_arg(call: &swc_ecma_ast::CallExpr, index: usize) -> Option<String> {
+    match call.args.get(index).map(|a| &*a.expr) {
+        Some(Expr::Lit(swc_ecma_ast::Lit::Str(s))) => Some(s.value.to_string_lossy().to_string()),
         _ => None,
     }
 }
@@ -280,6 +325,37 @@ mod tests {
         assert!(classify_framework_hatch("bypassSecurityTrustHtml").is_some());
         assert!(classify_framework_hatch("v-html").is_some());
         assert!(classify_framework_hatch("onClick").is_none());
+    }
+
+    #[test]
+    fn set_attribute_href_is_navigation_sink() {
+        let call = parse_first_call(r#"el.setAttribute("href", tainted)"#).expect("call");
+        assert_eq!(
+            classify_call(&call).map(|m| m.kind),
+            Some(SinkKind::Navigation)
+        );
+    }
+
+    #[test]
+    fn set_attribute_onclick_is_code_execution_sink() {
+        let call = parse_first_call(r#"el.setAttribute("onclick", tainted)"#).expect("call");
+        assert_eq!(
+            classify_call(&call).map(|m| m.kind),
+            Some(SinkKind::CodeExecution)
+        );
+    }
+
+    #[test]
+    fn set_attribute_safe_name_is_not_a_sink() {
+        let call = parse_first_call(r#"el.setAttribute("class", tainted)"#).expect("call");
+        assert!(classify_call(&call).is_none());
+    }
+
+    #[test]
+    fn set_attribute_computed_name_is_not_a_sink() {
+        // A non-literal attribute name cannot be classified — conservatively skip.
+        let call = parse_first_call("el.setAttribute(name, tainted)").expect("call");
+        assert!(classify_call(&call).is_none());
     }
 
     #[test]

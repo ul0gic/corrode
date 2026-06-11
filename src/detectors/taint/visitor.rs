@@ -16,16 +16,14 @@ use swc_ecma_visit::{Visit, VisitWith};
 
 use super::parse::ParsedModule;
 use super::sinks::{self, SinkKind};
-use super::sources::{self, SourceKind, SourceMatch};
+use super::sources::{self, SourceMatch};
 
 /// A recorded flow before it is lifted into a public `TaintFlow`. Kept internal
 /// so the assembly logic in `mod.rs` owns the public type construction.
 #[derive(Debug, Clone)]
 pub(crate) struct RawFlow {
     pub source_label: String,
-    pub source_kind: SourceKind,
     pub sink_label: String,
-    pub sink_kind: SinkKind,
     /// Intermediate variable names the value passed through, in order.
     pub path: Vec<String>,
     pub location: String,
@@ -191,9 +189,7 @@ impl<'a> TaintVisitor<'a> {
         }
         self.flows.push(RawFlow {
             source_label: mark.source.label.clone(),
-            source_kind: mark.source.kind,
             sink_label: sink.label.clone(),
-            sink_kind: sink.kind,
             path: mark.path.clone(),
             location: self.loc(span),
         });
