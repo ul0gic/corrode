@@ -1,5 +1,6 @@
 pub mod nextjs;
 pub mod react;
+pub mod rsc;
 
 use crate::types::{TechnologyVersion, Vulnerability};
 
