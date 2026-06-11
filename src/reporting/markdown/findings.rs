@@ -1,8 +1,11 @@
 use std::cmp::Reverse;
 
-use crate::types::{ApiTestResult, ScanResult};
+use crate::types::{ApiTestResult, Confidence, ScanResult};
 
-use super::summary::{redact_value, secret_severity, severity_rank, truncate_middle};
+use super::summary::{
+    confidence_sort_key, redact_value, secret_severity, severity_confidence, severity_rank,
+    truncate_middle,
+};
 
 /// Unified finding for sorting across secrets and vulnerabilities.
 struct Finding {
@@ -14,6 +17,14 @@ struct Finding {
     context: String,
     location: Option<String>,
     remediation: Option<String>,
+    confidence: Option<Confidence>,
+}
+
+/// Top factor note from a confidence breakdown, for the rendered "why" line.
+fn confidence_why(confidence: Option<&Confidence>) -> Option<String> {
+    let c = confidence?;
+    let note = c.factors.iter().find(|f| !f.note.is_empty())?;
+    Some(note.note.clone())
 }
 
 pub(crate) fn render_secrets(result: &ScanResult) -> Vec<String> {
@@ -42,6 +53,7 @@ pub(crate) fn render_secrets(result: &ScanResult) -> Vec<String> {
                 context: secret_context(pattern_name),
                 location: None,
                 remediation: Some(secret_remediation(pattern_name)),
+                confidence: sf.confidence.clone(),
             });
         }
     }
@@ -57,11 +69,17 @@ pub(crate) fn render_secrets(result: &ScanResult) -> Vec<String> {
             context: vuln.description.clone(),
             location: vuln.url.clone(),
             remediation: Some(vuln.remediation.clone()),
+            confidence: vuln.confidence.clone(),
         });
     }
 
-    // Sort by severity (critical first)
-    findings.sort_by_key(|f| Reverse(severity_rank(&f.severity)));
+    // Sort by severity (critical first), then by confidence within each band.
+    findings.sort_by_key(|f| {
+        (
+            Reverse(severity_rank(&f.severity)),
+            Reverse(confidence_sort_key(f.confidence.as_ref())),
+        )
+    });
 
     // Render by severity section
     for sev in &["CRITICAL", "HIGH", "MEDIUM", "LOW", "INFO"] {
@@ -78,6 +96,13 @@ pub(crate) fn render_secrets(result: &ScanResult) -> Vec<String> {
         for (i, finding) in section_findings.iter().enumerate() {
             report.push(format!("#### {}. {}\n", i + 1, finding.title));
             report.push(format!("**Type**: {}", finding.finding_type));
+            report.push(format!(
+                "**Assessment**: {}",
+                severity_confidence(sev, finding.confidence.as_ref())
+            ));
+            if let Some(why) = confidence_why(finding.confidence.as_ref()) {
+                report.push(format!("**Confidence basis**: {why}"));
+            }
             report.push(format!("**Source**: {}", finding.source));
 
             if let Some(value) = &finding.value {

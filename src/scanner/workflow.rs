@@ -15,7 +15,7 @@ use crate::detectors::{
         dom::{self, DomArtifacts},
         javascript::{self, ScriptArtifacts},
     },
-    manifests,
+    manifests, scoring,
     secrets::SecretScanner,
     security::analyze_security,
     sourcemaps, taint, technologies, vulnerabilities,
@@ -561,7 +561,7 @@ async fn scan_url(
     let post_message_handlers = taint::postmessage::detect(&script_refs);
     let gadgets = taint::gadgets::inventory(&script_refs, csp_header);
 
-    let result = ScanResult {
+    let mut result = ScanResult {
         url: url.clone(),
         timestamp: Utc::now().to_rfc3339(),
         secrets,
@@ -608,6 +608,10 @@ async fn scan_url(
         success: true,
         error: None,
     };
+
+    // Phase 3 — score every finding's confidence (orthogonal to severity) now that
+    // the full result is assembled. Origin is judged against the scan target host.
+    scoring::score_all(&mut result, target_host.as_deref());
 
     if matches!(output_format, OutputFormat::Md | OutputFormat::Both) {
         markdown::write(&result, output_dir)?;

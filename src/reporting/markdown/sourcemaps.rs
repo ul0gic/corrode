@@ -6,7 +6,18 @@
 //! RSC findings are `Vulnerability`s rendered by the existing findings section,
 //! so they are intentionally absent here.
 
-use crate::types::ScanResult;
+use crate::types::{Confidence, ScanResult};
+
+use super::summary::{confidence_label, confidence_sort_key};
+
+/// Confidence cell for a table, e.g. `Medium`. Empty when unscored (back-compat).
+fn confidence_cell(confidence: Option<&Confidence>) -> String {
+    confidence.map_or_else(String::new, |c| {
+        confidence_label(c.level)
+            .trim_end_matches(" confidence")
+            .to_owned()
+    })
+}
 
 /// Versions recovered from source-map dependency paths carry this detection
 /// method; the general technology section renders everything else, so matching
@@ -49,11 +60,11 @@ fn render_source_maps(maps: &[crate::types::SourceMapIntel], report: &mut Vec<St
     }
 
     report.push("### Exposed Source Maps\n".to_owned());
-    report.push("| Source Map | From Script | Sources | Source Text |".to_owned());
-    report.push("|------------|-------------|--------:|-------------|".to_owned());
+    report.push("| Source Map | From Script | Sources | Source Text | Confidence |".to_owned());
+    report.push("|------------|-------------|--------:|-------------|------------|".to_owned());
     for map in maps {
         report.push(format!(
-            "| `{}` | `{}` | {} | {} |",
+            "| `{}` | `{}` | {} | {} | {} |",
             map.map_url,
             map.script_url,
             map.recovered_sources.len(),
@@ -61,7 +72,8 @@ fn render_source_maps(maps: &[crate::types::SourceMapIntel], report: &mut Vec<St
                 "recovered"
             } else {
                 "filenames only"
-            }
+            },
+            confidence_cell(map.confidence.as_ref())
         ));
     }
     report.push(String::new());
@@ -93,15 +105,18 @@ fn render_routes(routes: &[crate::types::RouteSurface], report: &mut Vec<String>
     }
 
     report.push("### Recovered Route Surface\n".to_owned());
-    report.push("| Path | Kind | Dynamic | Source |".to_owned());
-    report.push("|------|------|:-------:|--------|".to_owned());
-    for route in routes {
+    report.push("| Path | Kind | Dynamic | Source | Confidence |".to_owned());
+    report.push("|------|------|:-------:|--------|------------|".to_owned());
+    let mut ordered: Vec<&crate::types::RouteSurface> = routes.iter().collect();
+    ordered.sort_by_key(|r| std::cmp::Reverse(confidence_sort_key(r.confidence.as_ref())));
+    for route in ordered {
         report.push(format!(
-            "| `{}` | {} | {} | `{}` |",
+            "| `{}` | {} | {} | `{}` | {} |",
             route.path,
             route.kind,
             if route.dynamic { "yes" } else { "no" },
-            route.source
+            route.source,
+            confidence_cell(route.confidence.as_ref())
         ));
     }
     report.push(String::new());

@@ -7,10 +7,6 @@
 //! Model spec: `.project/research/confidence-model-brief.md`. Weights live as named
 //! `const`s below so false-positive tuning (task 4.4) is a one-line edit.
 //
-// Built in task 3.1; the per-finding application (tasks 3.2–3.4) consumes `score`
-// next. Until then nothing outside this module's tests calls it.
-#![allow(dead_code)]
-
 use crate::types::{Confidence, ConfidenceFactor, ConfidenceLevel, EvidenceSource};
 
 // --- Weights (brief §3). Tuning is a one-line change here. ---

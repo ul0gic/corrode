@@ -1,6 +1,7 @@
 pub mod collectors;
 pub mod confidence;
 pub mod manifests;
+pub mod scoring;
 pub mod secrets;
 pub mod security;
 pub mod sourcemaps;

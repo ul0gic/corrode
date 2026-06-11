@@ -1,4 +1,38 @@
-use crate::types::ScanResult;
+use crate::types::{Confidence, ConfidenceLevel, ScanResult};
+
+/// Human label for a confidence level, e.g. `Medium confidence`.
+pub(crate) fn confidence_label(level: ConfidenceLevel) -> &'static str {
+    match level {
+        ConfidenceLevel::High => "High confidence",
+        ConfidenceLevel::Medium => "Medium confidence",
+        ConfidenceLevel::Low => "Low confidence",
+    }
+}
+
+/// Render `Severity / Confidence` when a finding is scored, else just the
+/// severity (back-compat: an unscored `None` confidence renders nothing extra).
+pub(crate) fn severity_confidence(severity: &str, confidence: Option<&Confidence>) -> String {
+    match confidence {
+        Some(c) => format!("{severity} severity / {}", confidence_label(c.level)),
+        None => format!("{severity} severity"),
+    }
+}
+
+/// Sort key for ordering findings by confidence within a severity band, highest
+/// first. Unscored findings sort last. The `u8` score disambiguates same-level.
+pub(crate) fn confidence_sort_key(confidence: Option<&Confidence>) -> (u8, u8) {
+    match confidence {
+        Some(c) => {
+            let level = match c.level {
+                ConfidenceLevel::High => 3,
+                ConfidenceLevel::Medium => 2,
+                ConfidenceLevel::Low => 1,
+            };
+            (level, c.score)
+        }
+        None => (0, 0),
+    }
+}
 
 pub(crate) fn severity_rank(label: &str) -> u8 {
     match label.to_lowercase().as_str() {

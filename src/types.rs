@@ -193,8 +193,6 @@ pub enum ConfidenceLevel {
 }
 
 /// Evidence origin, ranked by trustworthiness during scoring.
-// First consumed by the Phase 1 source-map detector; dead until then.
-#[allow(dead_code)]
 #[derive(Debug, Serialize, Deserialize, Clone, Copy, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 pub enum EvidenceSource {

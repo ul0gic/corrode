@@ -8,7 +8,18 @@
 //! `&ScanResult`, returns `Vec<String>`, and is empty when all three source
 //! collections are empty.
 
-use crate::types::ScanResult;
+use crate::types::{Confidence, ScanResult};
+
+use super::summary::{confidence_label, confidence_sort_key};
+
+/// Confidence cell for a table, e.g. `Medium`. Empty when unscored (back-compat).
+fn confidence_cell(confidence: Option<&Confidence>) -> String {
+    confidence.map_or_else(String::new, |c| {
+        confidence_label(c.level)
+            .trim_end_matches(" confidence")
+            .to_owned()
+    })
+}
 
 pub(crate) fn render_taint(result: &ScanResult) -> Vec<String> {
     let nothing_to_report = result.taint_flows.is_empty()
@@ -38,18 +49,21 @@ fn render_flows(flows: &[crate::types::TaintFlow], report: &mut Vec<String>) {
     }
 
     report.push("### Taint Flows\n".to_owned());
-    report.push("| Flow | Location | Runtime |".to_owned());
-    report.push("|------|----------|:-------:|".to_owned());
-    for flow in flows {
+    report.push("| Flow | Location | Runtime | Confidence |".to_owned());
+    report.push("|------|----------|:-------:|------------|".to_owned());
+    let mut ordered: Vec<&crate::types::TaintFlow> = flows.iter().collect();
+    ordered.sort_by_key(|f| std::cmp::Reverse(confidence_sort_key(f.confidence.as_ref())));
+    for flow in ordered {
         report.push(format!(
-            "| {} | `{}` | {} |",
+            "| {} | `{}` | {} | {} |",
             crate::detectors::taint::render_flow(flow),
             flow.location,
             if flow.runtime_observed {
                 "observed"
             } else {
                 "static"
-            }
+            },
+            confidence_cell(flow.confidence.as_ref())
         ));
     }
     report.push(String::new());
@@ -61,12 +75,17 @@ fn render_gadgets(gadgets: &[crate::types::Gadget], report: &mut Vec<String>) {
     }
 
     report.push("### Gadget Inventory\n".to_owned());
-    report.push("| Category | Description | Exploitability Hint |".to_owned());
-    report.push("|----------|-------------|---------------------|".to_owned());
-    for gadget in gadgets {
+    report.push("| Category | Description | Exploitability Hint | Confidence |".to_owned());
+    report.push("|----------|-------------|---------------------|------------|".to_owned());
+    let mut ordered: Vec<&crate::types::Gadget> = gadgets.iter().collect();
+    ordered.sort_by_key(|g| std::cmp::Reverse(confidence_sort_key(g.confidence.as_ref())));
+    for gadget in ordered {
         report.push(format!(
-            "| {} | {} | {} |",
-            gadget.category, gadget.description, gadget.exploitability_hint
+            "| {} | {} | {} | {} |",
+            gadget.category,
+            gadget.description,
+            gadget.exploitability_hint,
+            confidence_cell(gadget.confidence.as_ref())
         ));
     }
     report.push(String::new());
@@ -78,14 +97,17 @@ fn render_handlers(handlers: &[crate::types::PostMessageHandler], report: &mut V
     }
 
     report.push("### postMessage Handlers\n".to_owned());
-    report.push("| Location | Origin Check | Reaches Sink |".to_owned());
-    report.push("|----------|--------------|:------------:|".to_owned());
-    for handler in handlers {
+    report.push("| Location | Origin Check | Reaches Sink | Confidence |".to_owned());
+    report.push("|----------|--------------|:------------:|------------|".to_owned());
+    let mut ordered: Vec<&crate::types::PostMessageHandler> = handlers.iter().collect();
+    ordered.sort_by_key(|h| std::cmp::Reverse(confidence_sort_key(h.confidence.as_ref())));
+    for handler in ordered {
         report.push(format!(
-            "| `{}` | {} | {} |",
+            "| `{}` | {} | {} | {} |",
             handler.location,
             handler.origin_check,
-            if handler.reaches_sink { "yes" } else { "no" }
+            if handler.reaches_sink { "yes" } else { "no" },
+            confidence_cell(handler.confidence.as_ref())
         ));
     }
     report.push(String::new());
