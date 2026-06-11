@@ -14,11 +14,10 @@ pub fn classify_origin(url: &str, target_host: Option<&str>) -> Origin {
     };
     let target = target.to_lowercase();
 
-    match url::Url::parse(url).ok().and_then(|u| {
-        u.host_str()
-            .map(std::string::ToString::to_string)
-            .map(|h| h.to_lowercase())
-    }) {
+    match url::Url::parse(url)
+        .ok()
+        .and_then(|u| u.host_str().map(str::to_owned).map(|h| h.to_lowercase()))
+    {
         Some(host) => {
             if host == target
                 || host.ends_with(&format!(".{target}"))

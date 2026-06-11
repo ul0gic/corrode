@@ -221,15 +221,15 @@ impl Visit for BodyScan {
 
     fn visit_assign_expr(&mut self, n: &AssignExpr) {
         match &n.left {
-            AssignTarget::Simple(SimpleAssignTarget::Member(member)) => {
-                if sinks::classify_assign_target(member).is_some() {
-                    self.reaches_sink = true;
-                }
+            AssignTarget::Simple(SimpleAssignTarget::Member(member))
+                if sinks::classify_assign_target(member).is_some() =>
+            {
+                self.reaches_sink = true;
             }
-            AssignTarget::Simple(SimpleAssignTarget::Ident(ident)) => {
-                if sinks::classify_assign_ident(ident.sym.as_ref()).is_some() {
-                    self.reaches_sink = true;
-                }
+            AssignTarget::Simple(SimpleAssignTarget::Ident(ident))
+                if sinks::classify_assign_ident(ident.sym.as_ref()).is_some() =>
+            {
+                self.reaches_sink = true;
             }
             _ => {}
         }
