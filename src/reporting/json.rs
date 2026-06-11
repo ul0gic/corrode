@@ -4,11 +4,8 @@ use std::path::Path;
 
 use crate::types::ScanResult;
 
-/// Report schema version. v0.4 is the first shape carrying the confidence axis
-/// (`confidence` objects on findings) and the client-side attack-surface
-/// collections. Emitted as a top-level `schema_version` marker so downstream
-/// consumers can detect the 0.4 shape. Strictly additive: pre-0.4 consumers that
-/// ignore unknown keys are unaffected.
+/// Report schema version, emitted as a top-level `schema_version` marker.
+/// Strictly additive: pre-0.4 consumers that ignore unknown keys are unaffected.
 const SCHEMA_VERSION: &str = "0.4";
 
 pub fn write(path: &Path, result: &ScanResult) -> Result<()> {

@@ -1,8 +1,7 @@
 use crate::types::{TechnologyVersion, Vulnerability};
 
-/// Check detected technology versions against known Next.js CVEs.
-/// Emits info-level advisories when Next.js is detected but version is unknown,
-/// and specific severity findings when a vulnerable version is confirmed.
+/// Emits an info advisory when Next.js is detected but unversioned, and a graded
+/// finding when a vulnerable version is confirmed.
 pub fn check_cves(versions: &[TechnologyVersion]) -> Vec<Vulnerability> {
     let has_nextjs = versions.iter().any(|v| v.name.starts_with("Next.js"));
 

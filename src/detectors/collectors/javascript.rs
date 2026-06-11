@@ -17,20 +17,12 @@ pub struct ScriptArtifacts {
     pub script_count: usize,
     pub scripts_array: Vec<Value>,
     pub source_maps: Vec<String>,
-    /// `(referrer, map_ref)` pairs for source-map retrieval. The referrer is the
-    /// external script `src` for maps found in that script, or the page URL for
-    /// inline scripts and bare `.map` script srcs — preserved so `sourcemaps`
-    /// can resolve relative map URLs against the right base.
+    /// `(referrer, map_ref)` pairs — referrer is the base relative map URLs resolve against.
     pub source_map_candidates: Vec<(String, String)>,
-    /// `(text, source)` pairs for every first-party script body scanned (inline
-    /// content + fetched external text). Retained so the RSC detector can grade
-    /// the whole script corpus in `workflow.rs` without re-fetching.
+    /// `(text, source)` script bodies retained so the RSC detector grades the corpus without re-fetching.
     pub script_bodies: Vec<(String, String)>,
-    /// Asset URL stems from `<link rel="modulepreload">` hrefs and `<script src>`
-    /// URLs — the Vite/webpack chunk-graph input the manifest detector needs.
     pub chunk_names: Vec<String>,
-    /// JSON-encoded `<astro-island>` attribute maps. Astro has no `window`
-    /// global, so islands are the only client-side signal of its route surface.
+    /// Astro has no `window` global, so islands are the only client-side signal of its route surface.
     pub astro_islands: Vec<String>,
     pub window_objects: HashMap<String, String>,
     pub debug_flags: Vec<String>,
@@ -69,9 +61,7 @@ pub async fn collect(
             if should_analyze_ast(None, target_host) {
                 ast_findings.extend(ast::analyze_script(content, &label));
             }
-            // RSC grading happens once over the whole corpus in `workflow.rs` via
-            // `rsc::detect` — retain the body here, do not grade per-script (that
-            // would double-emit the react CVE findings rsc::detect already covers).
+            // Retain only; per-script RSC grading would double-emit findings `rsc::detect` already covers.
             script_bodies.push((content.to_owned(), label));
             // Maps referenced by an inline script resolve against the page URL.
             for map_ref in detect_source_map_urls(content) {
@@ -137,10 +127,7 @@ pub async fn collect(
         r"
         (() => {
             const results = {};
-            // Manifest/Flight globals routinely exceed the 10k default — Next.js
-            // __BUILD_MANIFEST and __next_f Flight streams in particular — so they
-            // get a larger budget. Parsers downstream degrade gracefully if a value
-            // is still truncated mid-structure.
+            // Manifest/Flight globals exceed the 10k default; downstream parsers degrade on truncation.
             const LARGE = 200000;
             const keys = [
                 '__NEXT_DATA__', '__NUXT__', '__INITIAL_STATE__', 'env', 'ENV',
@@ -232,11 +219,7 @@ pub async fn collect(
     })
 }
 
-/// Collect chunk asset URL stems for the Vite/webpack chunk-graph input.
-///
-/// Combines `<script src>` URLs (from the already-enumerated `scripts_array`)
-/// with `<link rel="modulepreload">` hrefs queried from the live DOM. Returns the
-/// raw URLs/paths; the manifest detector derives component/chunk stems from them.
+/// Combines `<script src>` URLs with `<link rel="modulepreload">` hrefs; returns raw URLs, not stems.
 async fn collect_chunk_names(page: &Page, scripts_array: &[Value]) -> Vec<String> {
     let mut chunks: Vec<String> = scripts_array
         .iter()
@@ -258,10 +241,7 @@ async fn collect_chunk_names(page: &Page, scripts_array: &[Value]) -> Vec<String
     chunks
 }
 
-/// Collect `<astro-island>` custom-element attribute maps as JSON strings.
-///
-/// Astro has no `window` global exposing its route surface, so the islands'
-/// attributes (`component-url`, `props`, etc.) are the only client-side signal.
+/// Astro exposes no `window` route global, so `<astro-island>` attributes are the only client signal.
 async fn collect_astro_islands(page: &Page) -> Vec<String> {
     page_utils::extract_json::<Vec<String>>(
         page,
@@ -342,10 +322,8 @@ mod tests {
         assert!(detect_source_map_urls("const x = 1; // just a comment").is_empty());
     }
 
-    // Mirrors how `collect` assigns referrers: an inline script's maps resolve
-    // against the page URL, while an external script's maps resolve against the
-    // script `src`. The async `collect` itself needs a live Page; this asserts
-    // the referrer-assignment contract over the extraction primitive it uses.
+    // Asserts the referrer-assignment contract `collect` uses: inline maps resolve against
+    // the page URL, external maps against the script `src`.
     #[test]
     fn referrer_assignment_matches_collect_contract() {
         let page_url = "https://example.com/app";

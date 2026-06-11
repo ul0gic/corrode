@@ -63,9 +63,8 @@ mod e2e_tests {
         TaintFlow, Vulnerability,
     };
 
-    /// A representative result spanning every scored finding type: a strong
-    /// runtime secret, a placeholder secret (suppressed), a static taint flow, a
-    /// strict-origin postMessage (low), and source-map / route / gadget findings.
+    /// A representative result spanning every scored finding type, used to
+    /// exercise the full report render in the e2e tests.
     fn fixture() -> ScanResult {
         let mut result = ScanResult {
             url: "https://app.example.com".to_owned(),

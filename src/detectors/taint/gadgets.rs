@@ -8,9 +8,8 @@ use super::{analyze, postmessage};
 /// each detector's `MAX_FINDINGS`. Truncation is logged, never silent (2.12).
 const MAX_GADGETS: usize = 200;
 
-/// Build the full gadget inventory for a script corpus. `csp` is the page's
-/// `Content-Security-Policy` header value, if any, used for the bypass
-/// correlation (2.7b). `scripts` is `(source_text, source_url)`.
+/// `csp` is the page's `Content-Security-Policy` value, used for the bypass
+/// correlation (2.7b); `scripts` is `(source_text, source_url)`.
 pub(crate) fn inventory(scripts: &[(&str, &str)], csp: Option<&str>) -> Vec<Gadget> {
     let flows = analyze(scripts);
     let protos = proto::detect(scripts);
@@ -55,8 +54,7 @@ fn classify(
     gadgets
 }
 
-/// The sink-label shape a flow lands in, recovered from the engine's flattened
-/// label. Ordered most- to least-specific so navigation/script/template are not
+/// Ordered most- to least-specific so navigation/script/template are not
 /// shadowed by the broad HTML/code match.
 enum FlowSink {
     HtmlOrCode,
@@ -85,9 +83,7 @@ fn flow_sink(label: &str) -> Option<FlowSink> {
     {
         return Some(FlowSink::Navigation);
     }
-    // Script load: a `*.src` label whose receiver hint names a script element
-    // (sinks.rs emits e.g. `script.src`), or `script.text`. The `.src` suffix is
-    // matched as a plain string, not a file extension.
+    // `.src` is matched as a plain string suffix, not a file extension.
     let is_script_src = matches!(label.strip_suffix(".src"), Some(obj) if obj.contains("script"));
     if label == "script.text" || is_script_src {
         return Some(FlowSink::ScriptLoad);
@@ -117,9 +113,8 @@ fn gadget_from_flow(flow: &TaintFlow) -> Option<Gadget> {
             "open-redirect",
             "tainted source reaches a navigation sink — manually confirm an external URL can be injected",
         ),
-        // A URL-derived value steering a script load is the JSONP / script-
-        // injection shape; a non-URL source into the same sink is reported as
-        // a generic dom-xss code-load above by virtue of not matching here.
+        // A URL-derived value steering a script load is the JSONP/script-
+        // injection shape; non-URL sources fall through to dom-xss above.
         FlowSink::ScriptLoad => (
             "jsonp",
             "tainted source controls a script source — manually confirm an attacker URL can be loaded as code",
@@ -155,10 +150,8 @@ fn gadget_from_proto(finding: &ProtoFinding) -> Gadget {
     }
 }
 
-/// A postMessage handler is a gadget only when it both trusts its origin weakly
-/// (or not at all) *and* reaches a sink. A strict-origin handler, or one that
-/// reaches no sink, is reported by the postMessage detector but is not an
-/// exploitable gadget on its own.
+/// A gadget only when the handler trusts its origin weakly *and* reaches a sink;
+/// either alone is reported by the detector but is not exploitable on its own.
 fn gadget_from_handler(handler: &PostMessageHandler) -> Option<Gadget> {
     if handler.origin_check == "strict" || !handler.reaches_sink {
         return None;
@@ -177,10 +170,8 @@ fn gadget_from_handler(handler: &PostMessageHandler) -> Option<Gadget> {
     })
 }
 
-/// CSP-bypass correlation (2.7b): when the corpus has at least one HTML/code
-/// sink and the page's CSP would not block its exploitation (unsafe-inline,
-/// unsafe-eval, or a broad script-src), emit one csp-bypass gadget. Read-only
-/// against the CSP parser; no payload is built.
+/// CSP-bypass correlation (2.7b): emit a gadget when an HTML/code sink exists
+/// and CSP would not block it. Read-only against the parser; no payload built.
 fn csp_bypass_gadget(flows: &[TaintFlow], csp: Option<&str>) -> Option<Gadget> {
     let header = csp?;
     let parsed = Csp::parse(header);

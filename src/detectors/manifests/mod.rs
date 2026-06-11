@@ -27,15 +27,8 @@ pub struct ManifestReport {
     pub routes: Vec<RouteSurface>,
 }
 
-/// Parse all detectable framework manifests from captured in-page state.
-///
-/// `window_objects` is the collector's map of `window.*` key → JSON string.
-/// `technologies` gates each parser: a framework is only parsed when its
-/// fingerprint was detected, so absent frameworks cost nothing.
-///
-/// `chunk_names` (Vite/webpack asset URLs already referenced by the page) and
-/// `astro_islands` (DOM `<astro-island>` attribute JSON) are separate inputs the
-/// Lead supplies at the gate; pass empty slices until then.
+/// `technologies` gates each parser, so absent frameworks cost nothing; pass empty
+/// `chunk_names`/`astro_islands` until the gate wires them.
 pub fn analyze(
     window_objects: &HashMap<String, String>,
     technologies: &[String],

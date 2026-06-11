@@ -6,10 +6,8 @@ pub(crate) struct SourceMatch {
     pub label: String,
 }
 
-/// Classify an expression as a taint source, if it is one. Recognizes member
-/// chains (`location.search`, `localStorage.getItem(...)`, `event.data`) and
-/// `new URLSearchParams(...)`. Returns `None` for everything else — the
-/// conservative default keeps false positives down.
+/// Classify an expression as a taint source (member chains, storage getters,
+/// `new URLSearchParams(...)`); `None` otherwise — the conservative low-FP default.
 pub(crate) fn classify_expr(expr: &Expr) -> Option<SourceMatch> {
     match expr {
         Expr::Member(member) => classify_member(member),
@@ -57,8 +55,7 @@ fn classify_call(call: &swc_ecma_ast::CallExpr) -> Option<SourceMatch> {
     }
 }
 
-/// Recognize member-chain sources: `location.href/search/hash`,
-/// `document.URL/documentURI/cookie/referrer`, `window.name`,
+/// Recognize member-chain sources: `location.*`, `document.*`, `window.name`,
 /// `event.data`, `.searchParams`.
 fn classify_member(member: &MemberExpr) -> Option<SourceMatch> {
     let prop = member_prop(&member.prop)?;
@@ -100,9 +97,8 @@ pub(crate) fn classify_bare_ident(expr: &Expr) -> Option<SourceMatch> {
     }
 }
 
-/// `event.data` within a known message handler. The visitor calls this only
-/// when it has established the enclosing function is a message listener, so the
-/// receiver-name heuristic here can stay broad without inviting false positives.
+/// `event.data` within a known message handler. Called only inside an established
+/// message listener, so the receiver-name heuristic can stay broad safely.
 pub(crate) fn classify_message_data(member: &MemberExpr, event_param: &str) -> Option<SourceMatch> {
     let prop = member_prop(&member.prop)?;
     let object = root_object_name(&member.obj);

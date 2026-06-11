@@ -1,18 +1,15 @@
 //! Browsers enforce the intersection of all delivered policies, so a relaxation
 //! is reported only when every applicable policy permits it.
 
-/// One parsed CSP, holding the effective `script-src` token list (after the
-/// `default-src` fallback) for each delivered policy. Empty `policies` means no
-/// CSP constrained scripts at all.
+/// Effective `script-src` per delivered policy; empty `policies` means no CSP
+/// constrained scripts at all.
 #[derive(Debug, Clone, Default)]
 pub(crate) struct Csp {
     policies: Vec<ScriptPolicy>,
 }
 
-/// The `script-src` sources a single policy permits, plus whether the policy
-/// even constrained script execution. `present` is false when neither
-/// `script-src` nor `default-src` appeared — such a policy places no limit on
-/// scripts and so cannot bypass anything by itself.
+/// `present` is false when neither `script-src` nor `default-src` appeared, so
+/// the policy places no limit on scripts and cannot bypass anything by itself.
 #[derive(Debug, Clone)]
 struct ScriptPolicy {
     present: bool,
@@ -20,9 +17,8 @@ struct ScriptPolicy {
 }
 
 impl Csp {
-    /// Parse a header value (one or more policies) into its effective
-    /// `script-src` per policy. Tolerates empty input, duplicate directives
-    /// (first wins, matching browser behavior), and malformed tokens (ignored).
+    /// Duplicate directives resolve first-wins (browser behavior); empty input
+    /// and malformed tokens are tolerated and ignored.
     pub(crate) fn parse(header: &str) -> Csp {
         let policies = split_policies(header)
             .map(parse_policy)
@@ -31,24 +27,19 @@ impl Csp {
         Csp { policies }
     }
 
-    /// True when an inline `<script>` / inline event handler could execute under
-    /// *every* applicable policy: `'unsafe-inline'` present and not neutralized
-    /// by a nonce, hash, or `'strict-dynamic'` (any of which makes browsers
-    /// ignore `'unsafe-inline'`).
+    /// True when inline scripts execute under every policy: a nonce, hash, or
+    /// `'strict-dynamic'` neutralizes `'unsafe-inline'`, so those make it safe.
     pub(crate) fn allows_unsafe_inline_scripts(&self) -> bool {
         self.all_constraining_policies(policy_allows_unsafe_inline)
     }
 
-    /// True when `eval`/`Function`-style string execution is permitted under
-    /// every applicable policy (`'unsafe-eval'` present in the effective
-    /// `script-src`).
+    /// True when `'unsafe-eval'` is permitted under every applicable policy.
     pub(crate) fn allows_unsafe_eval(&self) -> bool {
         self.all_constraining_policies(|p| has_keyword(&p.sources, "unsafe-eval"))
     }
 
-    /// True when script sources are effectively unrestricted: a wildcard or a
-    /// bare scheme (`*`, `https:`, `http:`, `data:`) is allowed under every
-    /// applicable policy, or no policy constrains scripts at all.
+    /// True when a wildcard/bare scheme is allowed under every applicable policy,
+    /// or no policy constrains scripts at all.
     pub(crate) fn has_broad_script_src(&self) -> bool {
         if self.policies.iter().all(|p| !p.present) {
             return true;
@@ -56,9 +47,8 @@ impl Csp {
         self.all_constraining_policies(|p| sources_are_broad(&p.sources))
     }
 
-    /// Run `pred` against every policy that actually constrains scripts. A
-    /// relaxation holds only if all such policies agree; a policy that does not
-    /// constrain scripts cannot tighten the others, so it is skipped.
+    /// A relaxation holds only if all constraining policies agree; a policy that
+    /// does not constrain scripts cannot tighten the others, so it is skipped.
     fn all_constraining_policies(&self, pred: impl Fn(&ScriptPolicy) -> bool) -> bool {
         let mut constraining = self.policies.iter().filter(|p| p.present).peekable();
         if constraining.peek().is_none() {
@@ -68,9 +58,8 @@ impl Csp {
     }
 }
 
-/// True if `'unsafe-inline'` is present and not overridden. A nonce, a hash, or
-/// `'strict-dynamic'` causes browsers to ignore `'unsafe-inline'`, so its
-/// presence makes the policy effectively safe against inline scripts.
+/// A nonce, hash, or `'strict-dynamic'` makes browsers ignore `'unsafe-inline'`,
+/// so its presence makes the policy effectively safe against inline scripts.
 fn policy_allows_unsafe_inline(p: &ScriptPolicy) -> bool {
     if !has_keyword(&p.sources, "unsafe-inline") {
         return false;
@@ -96,9 +85,8 @@ fn sources_are_broad(sources: &[String]) -> bool {
     })
 }
 
-/// Case-insensitive match for a CSP keyword token, with or without the quotes
-/// browsers require (`'unsafe-inline'`). We accept the unquoted form too since
-/// real-world headers are sloppy and we would rather over-report a relaxation.
+/// Accepts the unquoted form too: real-world headers are sloppy and we would
+/// rather over-report a relaxation than miss one.
 fn has_keyword(sources: &[String], keyword: &str) -> bool {
     let quoted = format!("'{keyword}'");
     sources
@@ -106,9 +94,8 @@ fn has_keyword(sources: &[String], keyword: &str) -> bool {
         .any(|s| s.eq_ignore_ascii_case(&quoted) || s.eq_ignore_ascii_case(keyword))
 }
 
-/// Split a header value into individual policies on commas. A comma separates
-/// whole policies in a combined header; multiple delivered headers can be joined
-/// with newlines, which we also split on.
+/// A comma separates whole policies in a combined header; delivered headers
+/// joined with newlines are split too.
 fn split_policies(header: &str) -> impl Iterator<Item = &str> {
     header
         .split(['\n', ','])
@@ -116,9 +103,8 @@ fn split_policies(header: &str) -> impl Iterator<Item = &str> {
         .filter(|p| !p.is_empty())
 }
 
-/// Resolve one policy's effective `script-src`, applying the `default-src`
-/// fallback. Directive names are case-insensitive; the first occurrence of a
-/// directive wins (browsers ignore duplicates).
+/// Applies the `default-src` fallback; directive names are case-insensitive and
+/// first occurrence wins (browsers ignore duplicates).
 fn parse_policy(policy: &str) -> ScriptPolicy {
     let mut script_src: Option<Vec<String>> = None;
     let mut default_src: Option<Vec<String>> = None;

@@ -12,9 +12,7 @@ use crate::types::Vulnerability;
 static FLIGHT_PUSH_RE: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"(?:self\.)?__next_f\s*(?:\.push|\[)").unwrap());
 
-// `react-server-dom-(webpack|parcel|turbopack)` — the RSC client/server bridge.
-// Its mere presence is server-action / RSC evidence; the version (if any) is
-// graded separately by react.rs.
+// The RSC client/server bridge; its presence alone is RSC evidence, version graded by `react.rs`.
 #[allow(clippy::unwrap_used)]
 static SERVER_DOM_RE: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"react-server-dom-(?:webpack|parcel|turbopack)").unwrap());
@@ -27,9 +25,8 @@ static SERVER_ACTION_RE: LazyLock<Regex> = LazyLock::new(|| {
         .unwrap()
 });
 
-/// What was found on the page that points at an RSC surface. These flags are
-/// independent presence signals (a detection bitmap), not phases of a state
-/// machine — any subset can co-occur — so a flat bool struct is the honest shape.
+/// Independent RSC presence signals, not state-machine phases — any subset can co-occur,
+/// so a flat bool struct is the honest shape.
 #[allow(clippy::struct_excessive_bools)]
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
 pub struct RscSurface {
@@ -41,9 +38,8 @@ pub struct RscSurface {
 }
 
 impl RscSurface {
-    /// True once we have a corroborated RSC surface — a Flight stream or the
-    /// server-dom bridge or server-action markers. A lone `_rsc=` query string
-    /// is deliberately not enough (see [`detect`]).
+    /// Corroborated RSC surface — Flight, server-dom, or server-action markers;
+    /// a lone `_rsc=` query string is deliberately not enough (see [`detect`]).
     fn is_present(&self) -> bool {
         self.flight_markers || self.server_dom || self.server_actions
     }
@@ -84,15 +80,8 @@ pub fn fingerprint(
     surface
 }
 
-/// Detect RSC vulnerabilities and surface advisories.
-///
-/// Two evidence tiers, kept distinct in the finding text and severity:
-/// - **observed** — a vulnerable `react-server-dom-*` version was matched in
-///   script text; the precise CVE findings come from [`detect_rsc_vulns`] and
-///   carry their real severities (critical/high/medium).
-/// - **inferred** — an App Router + Flight surface is present but no version was
-///   observed; we emit a single low-severity advisory pointing at the same CVE
-///   cluster so it reads as a lead to verify, not a confirmed vuln.
+/// Two evidence tiers kept distinct in text and severity: observed (graded CVEs from
+/// [`detect_rsc_vulns`]) vs inferred (a low-severity lead when the surface but no version is seen).
 pub fn detect(
     scripts: &[(&str, &str)],
     window_objects: &HashMap<String, String>,

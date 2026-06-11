@@ -21,10 +21,8 @@ impl OtherResult {
     }
 }
 
-/// `nuxt` / `sveltekit` are the JSON strings of `window.__NUXT__` and a
-/// `window.__sveltekit_*` global; `chunk_names` are already-referenced asset
-/// stems (modulepreload hrefs, `<script src>`); `astro_islands` are the JSON
-/// attribute maps of any `<astro-island>` DOM elements. All optional.
+/// All inputs optional: `nuxt`/`sveltekit` window-global JSON, `chunk_names` asset
+/// URLs, `astro_islands` attribute-map JSON.
 pub fn parse(
     nuxt: Option<&str>,
     sveltekit: Option<&str>,

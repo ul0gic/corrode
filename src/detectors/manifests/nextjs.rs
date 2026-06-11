@@ -12,9 +12,8 @@ pub struct NextResult {
     pub routes: RouteSet,
 }
 
-/// Parses whatever Next.js globals are present. Each value is the JSON string
-/// captured by the collector (`JSON.stringify(window[key])`). Absent, truncated,
-/// or unparseable values are skipped, never panicked on.
+/// Parses whatever Next.js JSON globals are present; absent, truncated, or
+/// unparseable values are skipped, never panicked on.
 pub fn parse(
     next_data: Option<&str>,
     build_manifest: Option<&str>,

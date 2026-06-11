@@ -25,9 +25,8 @@ lazy_static! {
 pub struct SecretScanner {
     findings: Arc<Mutex<HashMap<String, Vec<SecretFinding>>>>,
     comments: Arc<Mutex<Vec<Comment>>>,
-    /// Secret values already recorded, keyed by `(pattern_name, value)`. A value
-    /// found in the minified bundle is not re-counted when the same value
-    /// resurfaces in source-map-recovered source (task 1.4 de-dup).
+    /// Recorded `(pattern_name, value)` set so a bundle secret is not re-counted when it
+    /// resurfaces in source-map-recovered source.
     seen_values: Arc<Mutex<HashSet<(String, String)>>>,
     /// Compiled custom patterns from config file, keyed by name.
     custom_patterns: Vec<(String, Regex)>,
@@ -52,9 +51,7 @@ impl SecretScanner {
         Self::default()
     }
 
-    /// Create a scanner with custom patterns and an ignore list.
-    /// Custom patterns are compiled from user-supplied regex strings.
-    /// Invalid regexes are logged and skipped (not fatal).
+    /// Compiles user-supplied custom patterns; invalid regexes are logged and skipped, not fatal.
     pub fn with_custom_config(custom: &[CustomPattern], ignore: &[String]) -> Self {
         let mut compiled = Vec::new();
         for cp in custom {
@@ -153,9 +150,8 @@ impl SecretScanner {
         }
     }
 
-    /// Keep only values not already recorded under `pattern_name`, marking the
-    /// survivors as seen. This is what stops a bundle secret from being counted
-    /// again when it resurfaces in source-map-recovered source.
+    /// Keep only values not yet recorded under `pattern_name`, marking survivors seen —
+    /// stops a bundle secret recounting when it resurfaces in recovered source.
     fn dedupe_new(
         seen: &mut HashSet<(String, String)>,
         pattern_name: &str,

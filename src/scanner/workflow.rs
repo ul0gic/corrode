@@ -441,9 +441,8 @@ async fn scan_url(
         ast_findings,
     } = script_data;
 
-    // Pillar 1 — passively recover source maps referenced by the page's scripts,
-    // then run the recovered first-party source through the same secret scanner.
-    // Best-effort: `analyze` logs and skips any bad/off-origin/oversized map.
+    // Recover referenced source maps, then scan recovered first-party source;
+    // best-effort: `analyze` logs and skips any bad/off-origin/oversized map.
     let source_map_report =
         sourcemaps::analyze(&source_map_candidates, target_host.as_deref()).await;
     for (path, content) in &source_map_report.recovered_sources {
@@ -491,12 +490,8 @@ async fn scan_url(
 
     let (mut all_vulns, security) = analyze_security(&raw_cookies, &all_calls, &url);
 
-    // Pillar 1 — RSC/App Router grading over the full first-party script corpus.
-    // `rsc::detect` is the single owner of RSC vuln emission: it calls
-    // `react::detect_rsc_vulns` internally and de-dupes, so the collector no longer
-    // grades scripts itself. We still guard against any react RSC CVE arriving via
-    // another path (e.g. a future `check_all` entry) by de-duping on
-    // (vuln_type, url) before extending.
+    // `rsc::detect` is the sole owner of RSC vuln emission; we still de-dupe on
+    // (`vuln_type`, url) to guard against a CVE arriving via another path.
     let script_refs: Vec<(&str, &str)> = script_bodies
         .iter()
         .map(|(text, src)| (text.as_str(), src.as_str()))
@@ -513,10 +508,8 @@ async fn scan_url(
     }
     all_vulns.extend(vulnerabilities::check_all(&tech.versions));
 
-    // Pillar 1 — framework manifest extraction from captured in-page state.
-    // Best-effort: each per-framework parser degrades gracefully on absent or
-    // truncated globals. Routes are appended to (not overwritten over) the
-    // source-map-derived route surface, then deduped by (path, kind).
+    // Extract framework manifests from in-page state (best-effort per parser);
+    // routes are appended to the source-map route surface, then deduped by (path, kind).
     let manifest_report = manifests::analyze(
         &window_objects,
         &tech.technologies,
@@ -545,9 +538,8 @@ async fn scan_url(
         }
     }
 
-    // Pillar 2 — client-side taint & gadget mapping over the first-party script
-    // corpus. Static and passive: flows are reported, never fired. CSP for the
-    // bypass correlation comes from the document response, if present.
+    // Static, passive taint/gadget mapping (flows reported, never fired);
+    // CSP for bypass correlation comes from the document response, if present.
     let csp_header = all_calls
         .iter()
         .find(|c| c.url == url || c.url.starts_with(&url))

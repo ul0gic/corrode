@@ -12,9 +12,8 @@ pub(crate) mod visitor;
 
 use crate::types::TaintFlow;
 
-/// Analyze a corpus of scripts and return the source→sink flows found.
-/// `scripts` is `(source_text, source_url)` — matching how `sourcemaps`/`rsc`
-/// take script corpora. Unparseable scripts are skipped silently (no panic).
+/// `scripts` is `(source_text, source_url)`; unparseable scripts are skipped
+/// silently (no panic on hostile input).
 pub fn analyze(scripts: &[(&str, &str)]) -> Vec<TaintFlow> {
     let mut flows = Vec::new();
 
@@ -52,18 +51,8 @@ fn dedupe(mut flows: Vec<TaintFlow>) -> Vec<TaintFlow> {
     flows
 }
 
-/// Promote statically-found flows to runtime-confirmed when their source value
-/// was actually observed at runtime (task 2.8). `observed_values` is the set of
-/// strings the network monitor recorded flowing through the page; the live
-/// plumbing is wired at Gate 2 — this function is the static, testable seam.
-///
-/// A flow is marked observed when any non-trivial observed value mentions the
-/// flow's source or sink label, the only stable identifiers a `TaintFlow`
-/// carries. Empty/very short observed values are ignored so a stray `""` or a
-/// single character cannot promote every flow (the low-FP stance applies here
-/// too).
-// Task 2.8 runtime-enrichment seam: live observed-value capture is deliberately
-// deferred (runtime value capture is out of scope under the passive guardrail).
+/// Static seam (task 2.8): marks a flow observed when a non-trivial value names
+/// its source/sink; unused until live capture lands, so `dead_code` is allowed.
 #[allow(dead_code)]
 pub fn mark_runtime_observed(flows: &mut [TaintFlow], observed_values: &[String]) {
     let signals: Vec<&str> = observed_values
@@ -82,9 +71,8 @@ pub fn mark_runtime_observed(flows: &mut [TaintFlow], observed_values: &[String]
     }
 }
 
-/// Human-readable rendering of a flow as `source → …hops… → sink`. Used by the
-/// reporting layer (wired at the gate); kept here so the format lives with the
-/// type that produces it.
+/// Renders a flow as `source → …hops… → sink`; kept here so the format lives
+/// with the type that produces it.
 pub fn render_flow(flow: &TaintFlow) -> String {
     let mut parts = Vec::with_capacity(flow.path.len() + 2);
     parts.push(flow.source.clone());

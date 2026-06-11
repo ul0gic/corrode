@@ -36,14 +36,12 @@ impl ProtoFinding {
 /// Bound on findings per corpus — keeps a pathological bundle from exploding.
 const MAX_FINDINGS: usize = 200;
 
-/// Property names whose write mutates the prototype chain when the base object
-/// is attacker-influenced. A write *to* one of these keys is the canonical
-/// pollution sink.
+/// Property names whose write mutates the prototype chain — the canonical
+/// pollution sink when the base object is attacker-influenced.
 const POLLUTION_KEYS: &[&str] = &["__proto__", "prototype", "constructor"];
 
-/// Helper names that recursively copy attacker data into a target object and so
-/// can set `__proto__` when fed a tainted, path-shaped payload. Matched on the
-/// method/function name regardless of receiver (lodash `_`, `$`, bare imports).
+/// Recursive-copy helpers that can set `__proto__` from a tainted path-shaped payload.
+/// Matched on method/function name regardless of receiver (lodash `_`, `$`, bare).
 const MERGE_HELPERS: &[&str] = &[
     "merge",
     "mergeWith",
@@ -120,9 +118,8 @@ impl<'a> ProtoVisitor<'a> {
         self.env = saved;
     }
 
-    /// Resolve the taint of an expression: a direct source, a tracked tainted
-    /// variable, or a transform/read over one. Returns the origin mark with the
-    /// hop appended, or `None` if untainted. Mirrors the engine visitor's shape.
+    /// Resolve an expression's taint (direct source, tracked variable, or transform
+    /// over one), origin mark with hop appended or `None`. Mirrors the engine visitor.
     fn taint_of(&self, expr: &Expr) -> Option<TaintMark> {
         if let Some(source) =
             sources::classify_expr(expr).or_else(|| sources::classify_bare_ident(expr))
@@ -152,9 +149,8 @@ impl<'a> ProtoVisitor<'a> {
         }
     }
 
-    /// `JSON.parse(tainted)`, `qs.parse(tainted)`, `decodeURIComponent(tainted)`
-    /// and `tainted.split(...)` all keep taint — these are the object-path
-    /// parsing steps that turn a string source into a mergeable shape.
+    /// Parse/transform calls (`JSON.parse`, `decodeURIComponent`, `.split`, …) keep
+    /// taint — they turn a string source into a mergeable object shape.
     fn taint_of_call(&self, call: &CallExpr) -> Option<TaintMark> {
         if let Some(arg) = call.args.first() {
             if let Some(mark) = self.taint_of(&arg.expr) {
@@ -180,10 +176,8 @@ impl<'a> ProtoVisitor<'a> {
         });
     }
 
-    /// An assignment is a pollution sink when either the property written is a
-    /// pollution key (`x.__proto__ = …`, `x["constructor"] = …`) or the key is
-    /// itself a tainted computed expression (`obj[userKey] = …` — a
-    /// configurable-key write). A constant non-pollution key is not a sink.
+    /// An assignment is a pollution sink when its property is a pollution key
+    /// (`x.__proto__ = …`) or a tainted computed key (`obj[userKey] = …`).
     fn check_sink_assign(&mut self, assign: &AssignExpr) {
         let AssignTarget::Simple(SimpleAssignTarget::Member(member)) = &assign.left else {
             return;
@@ -208,9 +202,8 @@ impl<'a> ProtoVisitor<'a> {
         }
     }
 
-    /// A call is a pollution sink when it is a deep-merge/extend/deep-set helper
-    /// and at least one argument carries taint. A merge of only constant/static
-    /// arguments is deliberately not a finding (the plan's low-FP stance).
+    /// A call is a pollution sink when it is a merge/extend/set helper with at least
+    /// one tainted argument; a constant-only merge is deliberately not a finding.
     fn check_sink_call(&mut self, call: &CallExpr) {
         let Some(name) = callee_name(call) else {
             return;
@@ -218,9 +211,8 @@ impl<'a> ProtoVisitor<'a> {
         if !MERGE_HELPERS.contains(&name.as_str()) {
             return;
         }
-        // FP suppression: lodash `set`/`setWith(obj, path, value)` take 3 args;
-        // a 2-arg `set` is almost always `Map.set(key, value)`, not path-shaped
-        // pollution. Require the 3-arg form for these two to skip Map/Set noise.
+        // Require 3-arg `set`/`setWith` (lodash path-set); a 2-arg call is almost
+        // always `Map.set(key, value)`, not pollution — skips Map/Set noise.
         if matches!(name.as_str(), "set" | "setWith") && call.args.len() < 3 {
             return;
         }
@@ -260,9 +252,8 @@ impl<'a> ProtoVisitor<'a> {
     }
 }
 
-/// A member property as a static key string, whether dotted (`x.__proto__`) or
-/// a string-literal subscript (`x["__proto__"]`). A computed *expression* key is
-/// not static and is handled separately as a configurable-key write.
+/// A member property as a static key string, dotted (`x.__proto__`) or string-literal
+/// subscript (`x["__proto__"]`); a computed-expression key is not static.
 fn static_prop(prop: &MemberProp) -> Option<String> {
     match prop {
         MemberProp::Ident(ident) => Some(ident.sym.to_string()),

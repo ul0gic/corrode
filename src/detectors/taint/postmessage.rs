@@ -13,8 +13,7 @@ use crate::types::PostMessageHandler;
 /// listeners in a loop cannot explode the report.
 const MAX_HANDLERS: usize = 200;
 
-/// Map the postMessage receive/send surface across a script corpus.
-/// `scripts` is `(source_text, source_url)`, matching the engine's `analyze`.
+/// Map the `postMessage` receive/send surface; `scripts` is `(source_text, source_url)`.
 /// Unparseable scripts are skipped silently (no panic on hostile input).
 pub(crate) fn detect(scripts: &[(&str, &str)]) -> Vec<PostMessageHandler> {
     let mut out = Vec::new();
@@ -90,9 +89,8 @@ impl<'a> HandlerVisitor<'a> {
         });
     }
 
-    /// A wildcard `postMessage(payload, "*")` send is its own finding: the
-    /// message is delivered to any origin. Recorded with `origin_check = "none"`
-    /// and `reaches_sink = false` — it is a send-side leak, not a receive sink.
+    /// A wildcard `postMessage(payload, "*")` send is its own finding: delivered to
+    /// any origin. Recorded as `origin_check = "none"` — a send-side leak, not a sink.
     fn record_wildcard_send(&mut self, span: Span) {
         if self.handlers.len() >= MAX_HANDLERS {
             return;
@@ -126,9 +124,7 @@ impl Visit for HandlerVisitor<'_> {
     }
 }
 
-/// Scan a handler body for (a) the strongest origin check it performs and
-/// (b) whether it reaches any recognized sink. `event_param` is the handler's
-/// first parameter, e.g. `e` — used to anchor `e.origin` / `e.data`.
+/// Scan a handler body for its strongest origin check and whether it reaches a sink.
 struct BodyScan {
     param: HandlerParam,
     origin: OriginCheck,
@@ -144,11 +140,8 @@ impl BodyScan {
         }
     }
 
-    /// Whether `expr` reads the handler's message origin: `<param>.origin` for a
-    /// named param, or a bare `origin` ident when the param destructured it
-    /// (`({origin}) => …`). Scoped to those two shapes to keep FPs down — an
-    /// unrelated variable named `origin` outside a destructuring handler is not
-    /// treated as validation.
+    /// Whether `expr` reads the handler's message origin (`<param>.origin`, or bare
+    /// `origin` when destructured). Scoped to those shapes to keep false positives down.
     fn is_origin_read(&self, expr: &Expr) -> bool {
         match unwrap_paren(expr) {
             Expr::Member(member) => {
@@ -193,9 +186,8 @@ impl Visit for BodyScan {
     }
 
     fn visit_call_expr(&mut self, n: &CallExpr) {
-        // Weak validation: `e.origin.includes(...)`, `.startsWith(...)`,
-        // `.indexOf(...)`, `.match(...)`, `.test(e.origin)` — substring/prefix
-        // and unanchored-regex footguns that exact-match comparison avoids.
+        // Weak validation: substring/prefix/unanchored-regex origin checks
+        // (`includes`, `startsWith`, `test`, …) that exact-match comparison avoids.
         if let Callee::Expr(callee) = &n.callee {
             if let Expr::Member(member) = &**callee {
                 if let Some(method) = member_prop_name(&member.prop) {
@@ -255,9 +247,8 @@ impl Visit for BodyScan {
     }
 }
 
-/// If `call` is `addEventListener("message", handler)` (string-literal event),
-/// return the handler expression. The receiver is not constrained — `window`,
-/// `self`, `top`, or a worker port all register message handlers.
+/// If `call` is `addEventListener("message", handler)`, return the handler.
+/// The receiver is unconstrained — `window`/`self`/`top`/worker port all qualify.
 fn message_listener_handler(call: &CallExpr) -> Option<&Expr> {
     let Callee::Expr(callee) = &call.callee else {
         return None;

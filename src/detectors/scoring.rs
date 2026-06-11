@@ -6,15 +6,8 @@ use crate::types::{
     SecretFinding, SourceMapIntel, TaintFlow, Vulnerability,
 };
 
-/// Classify a URL as first- vs third-party relative to the scan target.
-///
-/// This is the 3-state classifier the confidence engine wants. It deliberately
-/// does **not** reuse the `bool` `is_first_party` helpers in `security/mod.rs` and
-/// `collectors/javascript.rs`: those default *unknown* origins to `true`
-/// (allow) for their own posture/dedup contracts, which would erase the
-/// `Unknown` band the scorer relies on to apply a neutral (`+0`) delta rather
-/// than a first-party bonus. Folding them together would change those callers'
-/// semantics, so the three live separately by design.
+/// Three-state, not the `bool` `is_first_party` helpers: those default unknown
+/// origins to first-party, erasing the neutral `Unknown` band the scorer needs.
 pub fn classify_origin(url: &str, target_host: Option<&str>) -> Origin {
     let Some(target) = target_host else {
         return Origin::Unknown;
@@ -79,11 +72,7 @@ pub fn score_all(result: &mut ScanResult, target_host: Option<&str>) {
 
 // --- SecretFinding -------------------------------------------------------
 
-/// Map a `SecretScanner` source label to the `EvidenceSource` it implies.
-///
-/// Labels are produced by the collectors: `Window Object: …` (runtime),
-/// `Source Map: …`, `Script: <url>` / `Inline Script` (static AST), cookie /
-/// storage / DOM inputs (rendered DOM), and `HTML` (the served document).
+/// Map a collector's `SecretScanner` source label to the `EvidenceSource` it implies.
 fn evidence_source_for_label(label: &str) -> EvidenceSource {
     if label.starts_with("Window Object:") {
         EvidenceSource::Runtime
@@ -128,9 +117,8 @@ fn looks_like_placeholder(value: &str) -> bool {
     trimmed.len() >= 8 && trimmed.chars().all(|c| c == '0')
 }
 
-/// Shannon entropy (bits/char) over the variable portion of a value. Known fixed
-/// secret prefixes are stripped first so a long literal prefix can't deflate a
-/// real key below the suppression floor (brief §7).
+/// Shannon entropy (bits/char) over the variable portion: fixed prefixes are
+/// stripped first so a long literal prefix can't deflate a real key's entropy.
 fn shannon_entropy(value: &str) -> f64 {
     let stripped = strip_known_prefix(value);
     let chars: Vec<char> = stripped.chars().collect();
@@ -208,10 +196,8 @@ pub(crate) fn score_secret(
     target_host: Option<&str>,
 ) -> Confidence {
     let source = evidence_source_for_label(&finding.source);
-    // Independent corroboration is by distinct source label, not raw match count
-    // (three regex hits in one bundle are one signal). The scanner stores one
-    // `SecretFinding` per source label, so a single finding is one signal; the
-    // match list within it does not multiply that.
+    // One `SecretFinding` per source label is one signal; its match list does not
+    // multiply that (three regex hits in one bundle are still one corroboration).
     let evidence_count = 1;
 
     let representative = finding.matches.first().map_or("", String::as_str);
@@ -247,9 +233,8 @@ pub(crate) fn score_secret(
 // --- Vulnerability -------------------------------------------------------
 
 pub(crate) fn score_vulnerability(vuln: &Vulnerability, target_host: Option<&str>) -> Confidence {
-    // RSC advisories tag inferred (vs observed) certainty in the description with
-    // an `inferred:` prefix (task 1.9). Inferred = the surface is present but no
-    // concrete version was observed → precondition not met for the CVE.
+    // `inferred:` prefix means the surface is present but no concrete version was
+    // observed: the CVE precondition is not met.
     let inferred = vuln.description.to_lowercase().contains("inferred:");
 
     let source = vuln.url.as_deref().map_or(EvidenceSource::Header, |url| {
@@ -354,11 +339,8 @@ fn taint_exploitability(sink: &str) -> Exploitability {
     }
 }
 
-/// Defense-in-depth taint suppressor. The taint engine allowlists safe sinks and
-/// framework-sanitized paths *upstream* (task 2.9), so a clean flow rarely reaches
-/// scoring. This is the scoring-side backstop for the brief §3.6 hard suppressors:
-/// a flow whose sink is text-only, or whose path threads a known auto-escaping
-/// step, is forced to Low regardless of corroboration.
+/// Scoring-side backstop to the upstream taint allowlist: a text-only sink or a
+/// known auto-escaping step in the path forces the flow to Low.
 fn taint_suppressor(flow: &TaintFlow) -> Option<Suppressor> {
     let sink = flow.sink.to_lowercase();
     if sink.contains("textcontent") || sink.contains("innertext") {
@@ -401,9 +383,7 @@ pub(crate) fn score_taint_flow(flow: &TaintFlow, target_host: Option<&str>) -> C
 // --- Gadget --------------------------------------------------------------
 
 pub(crate) fn score_gadget(gadget: &Gadget, target_host: Option<&str>) -> Confidence {
-    // The exploitability hint text drives actionability. A hint flagging an
-    // unmet precondition ("requires", "strict") weakens it; a CSP-permitted or
-    // unconditional sink strengthens it.
+    // The free-text exploitability hint drives actionability; parse its keywords.
     let hint = gadget.exploitability_hint.to_lowercase();
     let exploitability = if hint.contains("requires") || hint.contains("strict") {
         Exploitability::PreconditionUnmet

@@ -32,9 +32,8 @@ impl ParsedModule {
     }
 }
 
-/// Parse a script, trying ES syntax first then TypeScript, matching
-/// `collectors/ast.rs`. Returns `None` on empty/oversized/unparseable input —
-/// callers degrade gracefully (no panic on hostile input).
+/// Tries ES syntax first, then TypeScript. Returns `None` on empty/oversized/
+/// unparseable input so callers degrade gracefully (no panic on hostile input).
 pub(crate) fn parse_script(source: &str, source_name: &str) -> Option<ParsedModule> {
     if source.trim().is_empty() || source.len() > MAX_SCRIPT_BYTES {
         return None;

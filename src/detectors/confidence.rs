@@ -46,11 +46,8 @@ const SUPPRESSOR_CEILING: u8 = 20;
 const BAND_MEDIUM_FLOOR: u8 = 40;
 const BAND_HIGH_FLOOR: u8 = 75;
 
-/// Finding category, used to make source-type trust context-sensitive (brief §3.5).
-///
-/// A `SourceMap` signal is high-trust for secrets/versions (recovered real source) but
-/// `AST`-equivalent for taint/gadget findings (recovered code is still *static* — it
-/// does not prove a flow fires).
+/// Makes source-type trust context-sensitive: a `SourceMap` is high-trust for
+/// secrets but `AST`-tier for taint (recovered code is still static).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum FindingCategory {
     /// Secrets, versions, route/manifest recovery — `SourceMap` is high-trust here.
@@ -67,9 +64,8 @@ pub enum Origin {
     Unknown,
 }
 
-/// Entropy assessment of a secret-bearing value (brief dim 5).
-///
-/// `NotApplicable` for findings that are not secret values (taint flows, versions).
+/// Entropy of a secret-bearing value; `NotApplicable` for non-secret findings
+/// (taint flows, versions).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum EntropySignal {
     /// Low Shannon entropy over the variable portion (< ~3.0 bits/char).
@@ -92,10 +88,8 @@ pub enum Exploitability {
     None,
 }
 
-/// Hard suppressor (brief §4) — forces the finding to Low regardless of corroboration.
-///
-/// Modeled as a flag rather than a soft delta so the additive math stays pure and the
-/// override is explicit at the combination step.
+/// Forces the finding to Low regardless of corroboration. A flag, not a delta,
+/// so the additive math stays pure and the override is explicit.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Suppressor {
     /// Matched a known placeholder / test value (`sk_test_`, `AKIAIOSFODNN7EXAMPLE`, …).
@@ -116,10 +110,8 @@ impl Suppressor {
     }
 }
 
-/// Pure inputs to [`score`]. Built by the caller from domain knowledge.
-///
-/// Evidence-count dedup is the **caller's** responsibility: three regex hits in one
-/// file are one independent signal, not three. The scorer trusts the integer given.
+/// Pure inputs to [`score`]. Evidence-count dedup is the caller's responsibility:
+/// the scorer trusts the integer given (three hits in one file are one signal).
 #[derive(Debug, Clone)]
 pub struct FindingInputs {
     /// Distinct evidence sources observed for this finding (drives dim 2 trust rank).
@@ -139,12 +131,8 @@ pub struct FindingInputs {
     pub suppressor: Option<Suppressor>,
 }
 
-/// Score a finding into a [`Confidence`]. Pure and deterministic — order-independent.
-///
-/// Algorithm (brief §4): start at [`BASE`] = 40, apply signed per-dimension deltas with
-/// saturating arithmetic, clamp to `[0,100]`, then band. A hard suppressor overrides the
-/// band to Low and caps the score at [`SUPPRESSOR_CEILING`] — the additive `factors`
-/// trail is still recorded so the report can explain what was found.
+/// Score a finding into a [`Confidence`]: pure, deterministic, order-independent.
+/// A hard suppressor overrides the band to Low but still records the `factors` trail.
 pub fn score(inputs: &FindingInputs) -> Confidence {
     let mut factors: Vec<ConfidenceFactor> = Vec::new();
     let mut acc: u8 = BASE;

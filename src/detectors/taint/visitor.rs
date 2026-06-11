@@ -79,13 +79,11 @@ impl<'a> TaintVisitor<'a> {
         self.message_param = saved_msg;
     }
 
-    /// Resolve the taint of an expression: a direct source, a tainted variable
-    /// reference, or a member access on a tainted base. Returns the origin mark
-    /// (with the variable hop appended to its path) or `None` if untainted.
+    /// Resolve an expression's taint (direct source, tainted variable, or read on a
+    /// tainted base): origin mark with hop appended, or `None` if untainted.
     fn taint_of(&self, expr: &Expr) -> Option<TaintMark> {
-        // Tracked-variable taint wins over re-classifying the expression as a
-        // fresh source, so an origin like `location.search` is preserved through
-        // `params.get(...)` rather than collapsing to `params.get(...)`.
+        // Tracked-variable taint wins over re-classifying as a fresh source, so an
+        // origin like `location.search` survives `params.get(...)`.
         if let Some(mark) = self.taint_through_tracked_var(expr) {
             return Some(mark);
         }
@@ -117,10 +115,8 @@ impl<'a> TaintVisitor<'a> {
         }
     }
 
-    /// If `expr` is a method call or property read whose *root receiver* is a
-    /// tracked tainted variable, propagate that variable's origin. Returns
-    /// `None` for anything else so the caller falls back to direct-source
-    /// classification.
+    /// If `expr`'s root receiver is a tracked tainted variable, propagate its origin;
+    /// `None` otherwise so the caller falls back to direct-source classification.
     fn taint_through_tracked_var(&self, expr: &Expr) -> Option<TaintMark> {
         use swc_ecma_ast::Callee;
         let receiver = match expr {
@@ -270,9 +266,8 @@ impl TaintMark {
 /// Whether a string-timer call's first argument is a string literal or template
 /// (vs a function reference). Only string args are code-execution sinks.
 fn arg_is_stringish(call: &CallExpr) -> bool {
-    // String/template literals are obvious; an identifier or concatenation
-    // could hold a string, so a tainted string variable into setTimeout is
-    // still caught. A bare function reference is not stringish (benign).
+    // Idents/concatenations may hold a string, so a tainted string var into
+    // `setTimeout` is still caught; a bare function reference is benign.
     matches!(
         call.args.first().map(|a| &*a.expr),
         Some(Expr::Lit(Lit::Str(_)) | Expr::Tpl(_) | Expr::Ident(_) | Expr::Bin(_))

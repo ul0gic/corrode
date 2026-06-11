@@ -48,9 +48,7 @@ pub struct Args {
     )]
     pub file: Option<PathBuf>,
 
-    /// Output directory for scan results
-    ///
-    /// Results saved as: <OUTPUT>/<domain>/`scan_result.json` and REPORT.md
+    /// Output directory for scan results (per-domain `scan_result.json` + REPORT.md)
     #[arg(short, long, default_value = "corrode-output", value_name = "DIR")]
     pub output: PathBuf,
 
@@ -63,15 +61,11 @@ pub struct Args {
     )]
     pub chrome_bin: Option<PathBuf>,
 
-    /// Timeout for page load in seconds
-    ///
-    /// Maximum time to wait for a page to load before moving on.
+    /// Timeout for page load in seconds (max wait before moving on)
     #[arg(short, long, default_value = "30", value_name = "SECS")]
     pub timeout: u64,
 
-    /// Enable verbose output
-    ///
-    /// Shows detailed progress, found secrets, and API test results in real-time.
+    /// Enable verbose output (real-time progress, secrets, and API results)
     #[arg(short, long)]
     pub verbose: bool,
 

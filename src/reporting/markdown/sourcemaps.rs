@@ -14,9 +14,8 @@ fn confidence_cell(confidence: Option<&Confidence>) -> String {
     })
 }
 
-/// Versions recovered from source-map dependency paths carry this detection
-/// method; the general technology section renders everything else, so matching
-/// on it keeps the two sections from double-listing the same package.
+/// Detection method tagging source-map-recovered versions; matching on it keeps
+/// this section from double-listing packages the general technology section renders.
 const SOURCE_MAP_VERSION_METHOD: &str = "source-map dependency path";
 
 pub(crate) fn render_sourcemap_intel(result: &ScanResult) -> Vec<String> {

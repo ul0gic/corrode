@@ -75,14 +75,8 @@ pub struct ReportSection {
     pub include_network_log: Option<bool>,
 }
 
-/// Discover and load a `.corrode.toml` config file.
-///
-/// Discovery order:
-/// 1. Explicit path from `--config` flag (error if not found / invalid)
-/// 2. `./corrode.toml` in the current working directory
-/// 3. `~/.config/corrode/config.toml` (global config via `dirs` crate)
-///
-/// Returns `Ok(None)` if no config file is found at any location.
+/// Load config, preferring `--config`, then `./corrode.toml`, then `~/.config/corrode/config.toml`.
+/// Returns `Ok(None)` if none is found; an explicit path that is missing or invalid is an error.
 pub fn load_config_file(explicit_path: Option<&Path>) -> Result<Option<ConfigFile>> {
     if let Some(path) = explicit_path {
         let content = fs::read_to_string(path)
@@ -127,11 +121,8 @@ fn parse_format(s: &str) -> Option<OutputFormat> {
     }
 }
 
-/// Merge a `ConfigFile` into a `Config`, respecting priority:
-/// CLI flags (already in `config`) > config file values > built-in defaults.
-///
-/// Fields in `config` that have non-default values (i.e., were set by CLI)
-/// are NOT overwritten by the config file.
+/// Merge `file` into `config` at priority CLI flags > config file > defaults:
+/// fields already set to a non-default value by the CLI are not overwritten.
 pub fn merge_config_file(config: &mut Config, file: &ConfigFile) {
     if let Some(scan) = &file.scan {
         // Only apply config file timeout if CLI used the default (30)

@@ -25,9 +25,8 @@ pub(crate) struct SinkMatch {
     pub kind: SinkKind,
 }
 
-/// HTML-injection / navigation sinks reached via property *assignment*:
-/// `el.innerHTML = …`, `iframe.src = …`, `location.href = …`, `form.action = …`.
-/// Returns `None` when the assigned property is on the safe allowlist.
+/// HTML-injection / navigation sinks reached via property assignment (`el.innerHTML =
+/// …`, `iframe.src = …`); `None` when the property is on the safe allowlist.
 pub(crate) fn classify_assign_target(member: &MemberExpr) -> Option<SinkMatch> {
     let prop = member_prop(&member.prop)?;
     if is_safe_property(prop) {
@@ -152,14 +151,8 @@ fn classify_method_call(member: &MemberExpr) -> Option<SinkMatch> {
     }
 }
 
-/// `el.setAttribute(name, value)` is a sink only when the attribute name is a
-/// constant string that `is_safe_attribute` rejects — an `on*` handler or a
-/// known script-bearing attribute. A constant safe name, or a non-constant
-/// (computed) name we cannot inspect, is not recorded (the low-FP stance).
-/// Kind is chosen by attribute: navigation vectors (`href`/`src`/`action`/
-/// `formaction`/`xlink:href`) → `Navigation`; `srcdoc` → `FrameContent`; `on*`
-/// handlers → `CodeExecution`; everything else dangerous (`style`) →
-/// `HtmlInjection`.
+/// `el.setAttribute(name, value)` is a sink only for a constant name that
+/// `is_safe_attribute` rejects; kind follows the attribute (nav / frame / code / HTML).
 fn classify_set_attribute(call: &swc_ecma_ast::CallExpr) -> Option<SinkMatch> {
     let name = string_literal_arg(call, 0)?;
     let lower = name.to_ascii_lowercase();
@@ -181,9 +174,8 @@ fn classify_set_attribute(call: &swc_ecma_ast::CallExpr) -> Option<SinkMatch> {
     })
 }
 
-/// The string-literal value of the call argument at `index`, or `None` when the
-/// argument is absent or not a plain string literal (computed names cannot be
-/// classified, so they are conservatively not sinks).
+/// The string-literal value of the call argument at `index`, or `None` when absent
+/// or not a plain string literal (computed names are conservatively not sinks).
 fn string_literal_arg(call: &swc_ecma_ast::CallExpr, index: usize) -> Option<String> {
     match call.args.get(index).map(|a| &*a.expr) {
         Some(Expr::Lit(swc_ecma_ast::Lit::Str(s))) => Some(s.value.to_string_lossy().to_string()),
@@ -233,10 +225,8 @@ const DANGEROUS_ATTRIBUTES: &[&str] = &[
     "xlink:href",
 ];
 
-/// `setAttribute(name, value)` is safe unless the attribute can carry script:
-/// any `on*` handler or one of the known script-bearing attributes. Unknown
-/// attributes default to *safe* — the conservative, low-FP stance: an
-/// unrecognized attribute is far more likely benign than a script vector.
+/// An attribute is safe unless it can carry script (`on*` or a script-bearing name);
+/// unknown attributes default to safe, the conservative low-FP stance.
 pub(crate) fn is_safe_attribute(name: &str) -> bool {
     let lower = name.to_ascii_lowercase();
     if lower.starts_with("on") {
@@ -245,9 +235,8 @@ pub(crate) fn is_safe_attribute(name: &str) -> bool {
     !DANGEROUS_ATTRIBUTES.contains(&lower.as_str())
 }
 
-/// The leaf (closest-to-property) object name of a member chain: for
-/// `document.body.innerHTML` this is `body`; for `el.src` it is `el`. Used as a
-/// receiver hint to disambiguate `.src` / `.action` / `.text`.
+/// The leaf object name of a member chain (`document.body.innerHTML` → `body`),
+/// a receiver hint to disambiguate `.src` / `.action` / `.text`.
 fn leaf_object_name(obj: &Expr) -> Option<String> {
     match obj {
         Expr::Ident(ident) => Some(ident.sym.to_string()),
