@@ -7,7 +7,7 @@ and evidence-backed security findings.
 [![crates.io](https://img.shields.io/crates/v/corrode-scanner.svg)](https://crates.io/crates/corrode-scanner)
 [![Downloads](https://img.shields.io/crates/d/corrode-scanner.svg)](https://crates.io/crates/corrode-scanner)
 [![Rust](https://img.shields.io/badge/rust-1.97.1-orange.svg)](https://www.rust-lang.org/)
-[![License: AGPL v3](https://img.shields.io/badge/license-AGPL--3.0-blue.svg)](LICENSE)
+[![License: MIT OR Apache-2.0](https://img.shields.io/badge/license-MIT%20OR%20Apache--2.0-blue.svg)](#license-and-contributing)
 
 Corrode loads a target in headless Chrome and analyzes what the browser can see:
 HTML, JavaScript, DOM state, storage, cookies, network activity, source maps, and
@@ -201,10 +201,10 @@ produce false positives or miss vulnerabilities.
 
 ## License and Contributing
 
-Corrode is licensed under
-[AGPL-3.0-only](https://www.gnu.org/licenses/agpl-3.0.html). See [LICENSE](LICENSE)
-for the complete terms and [CONTRIBUTING.md](CONTRIBUTING.md) before opening a
-pull request.
+Corrode is available under your choice of the
+[MIT License](LICENSE-MIT) or [Apache License 2.0](LICENSE-APACHE). Commercial,
+private, and open-source use are permitted under those terms. Read
+[CONTRIBUTING.md](CONTRIBUTING.md) before opening a pull request.
 
 For questions, bug reports, or security concerns, open a
 [GitHub issue](https://github.com/ul0gic/corrode/issues).

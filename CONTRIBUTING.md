@@ -3,16 +3,16 @@
 Thank you for wanting to improve Corrode! To keep the project aligned with ul0gic's goals, please follow these guidelines:
 
 1. **License Alignment**
-   - All contributions are accepted under the GNU Affero General Public License v3.0.
-   - By opening a pull request, you confirm you have the rights to the code and that it may be redistributed under AGPL-3.0.
+   - All contributions are accepted under the project's dual MIT or Apache-2.0 terms.
+   - By opening a pull request, you confirm you have the rights to the code and that it may be redistributed under either license.
 
 2. **Attribution**
-   - Public shoutouts, blog posts, talks, or demos built on Corrode should credit **ul0gic** and link back to the repository.
-   - If you showcase Corrode in your own tooling, include "Powered by Corrode (ul0gic)" somewhere visible (docs, UI, README, etc.).
+   - Preserve the copyright and license notices required by your chosen license.
+   - Public credit to **ul0gic** and a link to the repository are appreciated.
 
-3. **Respect the License**
-   - Any redistribution (binary, SaaS, or fork) must remain AGPL compliant: publish your source, keep license headers, and preserve this disclaimer.
-   - Share improvements back whenever possible so the community benefits.
+3. **Reuse**
+   - Commercial, private, and open-source use are permitted under the license terms.
+   - Sharing useful improvements back with the community is encouraged.
 
 4. **Pull Request Expectations**
    - Keep PRs scoped and well-tested; include sample targets or fixtures if you’re touching the scanner pipeline.

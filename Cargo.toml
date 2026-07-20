@@ -1,11 +1,11 @@
 [package]
 name = "corrode-scanner"
-version = "0.5.0"
+version = "0.5.1"
 edition = "2021"
 rust-version = "1.97.1"
 authors = ["ul0gic"]
 description = "Passive web reconnaissance tool for extracting secrets, credentials, and security data"
-license = "AGPL-3.0-only"
+license = "MIT OR Apache-2.0"
 repository = "https://github.com/ul0gic/corrode"
 homepage = "https://github.com/ul0gic/corrode"
 documentation = "https://docs.rs/corrode"
