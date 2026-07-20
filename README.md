@@ -1,8 +1,7 @@
 # Corrode
 
-**Passive reconnaissance tool for extracting secrets, credentials, and security-relevant data from web applications**
-
-Built with Rust and chromiumoxide for fast, headless scanning. Corrode performs passive analysis only — no active exploitation or fuzzing. Use its output to inform manual penetration testing and security assessments.
+Passive web reconnaissance for exposed credentials, client-side attack surface,
+and evidence-backed security findings.
 
 [![CI](https://github.com/ul0gic/corrode/actions/workflows/ci.yml/badge.svg)](https://github.com/ul0gic/corrode/actions/workflows/ci.yml)
 [![crates.io](https://img.shields.io/crates/v/corrode-scanner.svg)](https://crates.io/crates/corrode-scanner)
@@ -10,444 +9,202 @@ Built with Rust and chromiumoxide for fast, headless scanning. Corrode performs 
 [![Rust](https://img.shields.io/badge/rust-1.97.1-orange.svg)](https://www.rust-lang.org/)
 [![License: AGPL v3](https://img.shields.io/badge/license-AGPL--3.0-blue.svg)](LICENSE)
 
-## Project Structure
+Corrode loads a target in headless Chrome and analyzes what the browser can see:
+HTML, JavaScript, DOM state, storage, cookies, network activity, source maps, and
+framework metadata. It turns those observations into a concise operator report
+while preserving complete evidence for deeper review.
 
-```
-src/
-├── lib.rs                    # Library crate root (corrode_scanner) — public module surface
-├── main.rs                   # Thin binary shim over the library
-├── api/                      # API endpoint discovery (passive extraction from JS)
-├── cli.rs                    # CLI definitions
-├── config.rs                 # Config normalization and config file loading
-├── detectors/
-│   ├── collectors/           # Page data extraction
-│   │   ├── ast.rs            #   SWC-based JavaScript AST analysis
-│   │   ├── dom.rs            #   DOM analysis: forms, hidden inputs, cookies, storage
-│   │   └── javascript.rs     #   Script extraction, window objects, version extraction
-│   ├── secrets/              # Credential detection engine
-│   │   ├── jwt.rs            #   JWT decoding and role classification
-│   │   └── patterns/         #   45+ categorized regex patterns (auth, cloud, ai,
-│   │                         #     payment, communication, monitoring, collaboration,
-│   │                         #     vcs, database, infrastructure)
-│   ├── sourcemaps/           # Source-map intelligence (passive .map recovery)
-│   │   ├── retrieve.rs       #   Scoped, capped, GET-only .map fetch
-│   │   ├── parse.rs          #   Source-map v3 JSON parsing (sources/sourcesContent)
-│   │   └── intel.rs          #   Routes + package versions from recovered source
-│   ├── manifests/            # Framework build/route manifest extraction
-│   │   ├── nextjs.rs         #   __BUILD_MANIFEST / __SSG_MANIFEST / Flight routes
-│   │   ├── remix.rs          #   Remix route-module manifest
-│   │   └── others.rs         #   Nuxt, SvelteKit, Astro islands, Vite/webpack chunks
-│   ├── taint/                # Client-side taint & gadget mapping (static + observed)
-│   │   ├── sources.rs        #   Taint sources (location, postMessage, storage, …)
-│   │   ├── sinks.rs          #   Sinks (innerHTML, eval, setAttribute, …)
-│   │   ├── proto.rs          #   Prototype-pollution surface heuristic
-│   │   ├── postmessage.rs    #   postMessage handler / origin-check mapper
-│   │   └── gadgets.rs        #   Gadget inventory + CSP-bypass correlation
-│   ├── confidence.rs         # Confidence scoring engine (severity × confidence)
-│   ├── scoring.rs            # Per-finding-type confidence application
-│   ├── session.rs            # Passive storage/session risk classification
-│   ├── security/             # Security analysis
-│   │   └── mod.rs            #   Cookie, header, CORS, mixed content checks
-│   ├── technologies/         # Technology fingerprinting (4 signal sources)
-│   │   ├── headers.rs        #   HTTP response header signatures
-│   │   ├── meta.rs           #   HTML meta tag generators
-│   │   ├── runtime.rs        #   Window object detection
-│   │   ├── scripts.rs        #   Script URLs + network request patterns
-│   │   └── wordpress.rs      #   Passive WordPress version evidence
-│   └── vulnerabilities/      # Per-framework CVE detection
-│       ├── nextjs.rs         #   Next.js CVEs
-│       ├── react.rs          #   React Server Components CVEs
-│       ├── rsc.rs            #   RSC deep passive mode (Flight/server-action markers)
-│       └── wordpress.rs      #   WordPress SQLi/RCE advisory correlation
-├── network/                  # Network monitor
-├── reporting/
-│   ├── json.rs               # Complete JSON evidence (schema 0.5)
-│   └── markdown/             # REPORT.md + exhaustive EVIDENCE.md
-├── scanner/
-│   ├── chrome.rs             # Chrome binary resolution
-│   └── workflow.rs           # Browser orchestration and scan workflow
-└── types.rs                  # Shared data structures
-fixtures/                     # Static fixture pages for local testing
-tests/                        # Integration tests driving the library crate
-corrode-output/               # Default output directory (per scan)
-examples/                     # Example configuration files
-```
+## Why Corrode
 
-## Architecture
+- Detects 45+ credential and secret formats across cloud, authentication,
+  payments, monitoring, collaboration, and database services.
+- Maps API endpoints, routes, framework manifests, source maps, client-side
+  taint flows, gadgets, prototype-pollution surfaces, and `postMessage` handlers.
+- Classifies browser-visible access tokens, refresh tokens, sessions, and JWT
+  claims without validating or replaying credentials.
+- Correlates directly observed React, Next.js, and WordPress versions with
+  supported security advisories.
+- Separates actionable findings, manual-validation leads, and neutral inventory.
+- Scores confidence independently from severity and records evidence provenance.
+- Supports single targets, sequential batch scans, custom patterns, and
+  machine-readable JSON.
 
-```mermaid
-graph TD
-    A[URL / URL File] --> B[Headless Chrome/Chromium]
-    B --> C[Network Monitor]
-    B --> D[DOM/Storage Extractor]
-    B --> E[Script + AST Scanner]
-    E --> G[Secret Scanner]
-    D --> H[Tech Fingerprinter]
-    C --> I[Security Analysis]
-    E --> J[CVE + RSC Detector]
-    E --> K[Source-Map Intelligence]
-    E --> L[Framework Manifests]
-    E --> M[Taint & Gadget Mapping]
-    K --> G
-    G --> S[Confidence Scoring]
-    J --> S
-    K --> S
-    L --> S
-    M --> S
-    S --> Results[Reporting JSON + MD]
-    C --> Results
-    D --> Results
-    H --> Results
-    I --> Results
+## Passive by Design
 
-    classDef purple fill:#e9d5ff,stroke:#7c3aed,stroke-width:2px,color:#000
-    class A,B,C,D,E,G,H,I,J,K,L,M,S,Results purple
-```
+Corrode analyzes the requested page, its naturally observed browser activity,
+and already-referenced first-party artifacts. It does not:
 
-## Features
+- execute exploits or replay credentials;
+- fuzz parameters or inject payloads;
+- probe guessed or unreferenced paths;
+- create accounts, upload files, or establish persistence; or
+- claim a vulnerability without direct supporting evidence.
 
-### Core Scanning Capabilities
-- **Fast Headless Scanning** - Optimized Chromium workflow for low-latency scans
-- **Deep Analysis** - Extracts and scans HTML, JavaScript bundles, inline scripts, and external resources
-- **Network Monitoring** - Tracks all HTTP requests, API calls, and third-party domains
-- **Pattern Matching** - Detects 45+ types of secrets and credentials across 10 service categories
-- **Decision-focused Reporting** - Concise `REPORT.md` separates actionable findings,
-  manual-validation leads, and inventory; exhaustive observations remain in
-  `EVIDENCE.md` and JSON
-- **Multi-URL Batch Scanning** - Scan a list of targets from a file with `--file targets.txt`
-- **Config File Support** - Persistent settings and custom patterns via `.corrode.toml`
-
-### Advanced Analysis
-- **API Endpoint Discovery** - Extracts API endpoints from JavaScript for manual testing
-- **CVE Detection** - Detects React and Next.js vulnerabilities by version fingerprint (9 CVEs)
-- **Technology Detection** - Identifies 60+ frameworks, servers, and services across runtime, headers, meta tags, and network URLs
-- **Version Extraction** - Extracts React and Next.js versions for CVE correlation
-- **DOM Analysis** - Analyzes forms, hidden inputs, iframes, meta tags, and data attributes
-- **Cookie Security Analysis** - Checks for insecure cookie configurations
-- **Window Object Inspection** - Extracts sensitive data and build manifests from 18+ window globals (`__NEXT_DATA__`, `__BUILD_MANIFEST`, `__next_f`, `__APOLLO_STATE__`, `__remixContext`, and more)
-- **Environment Variable Detection** - Flags exposed `REACT_APP_*`, `NEXT_PUBLIC_*`, and `VITE_*` variables
-- **Debug Mode Detection** - Identifies React development builds, Vue devtools, and HMR signals in production
-- **Source Map Detection** - Identifies exposed source maps via headers, comments, and CSS
-
-### Client-Side Attack Surface Intelligence (v0.4.0)
-
-Corrode turns frontend build artifacts into structured manual-testing leads. Everything here is strictly passive — findings describe surface and flows that *exist*; Corrode never constructs or fires a payload. Each is framed as a *lead with evidence* ("validate X here"), never a confirmed exploit.
-
-- **Source-Map Intelligence** - Recovers original source from exposed `.map` assets (GET-only, scoped to the target origin, size/count-capped), then re-scans recovered source for secrets, internal routes/controllers, security-relevant comments, and package versions
-- **Framework Manifest Extraction** - Parses in-page build/route manifests (Next.js `__BUILD_MANIFEST`/`__SSG_MANIFEST`/Flight, Remix route modules, Nuxt payload, SvelteKit, Astro islands, Vite/webpack chunk graphs) into a discovered route surface, including admin/billing/settings and dynamic-route patterns
-- **Client-Side Taint & Gadget Mapping** - Static source→sink flow analysis over the parsed AST (e.g. `location.search → URLSearchParams.get("redirect") → innerHTML`), prototype-pollution surface, a postMessage handler/origin-check mapper, a gadget inventory with exploitability hints, and CSP-bypass correlation against the page's own policy
-- **RSC Deep Passive Mode** - Detects React Server Components Flight endpoints, server-action markers, and App Router evidence, correlated against the RSC CVE table with an explicit observed-vs-inferred evidence level
-- **Confidence Scoring** - Every finding is scored on a confidence axis (orthogonal to severity) from evidence count, source type, first- vs third-party origin, and runtime-observed signals — surfaced as `High severity / Medium confidence` and sorted by confidence within severity in both report formats
-- **Passive WordPress Advisory Detection** - Correlates already-observed generator
-  versions with CVE-2026-60137 and CVE-2026-63030 without probing REST routes or
-  sending exploit traffic
-- **Storage and Session Risk Analysis** - Classifies already-observed access and
-  refresh tokens, privileged JWTs, persisted sessions, and public configuration;
-  decodes security-relevant JWT claims locally without validating or replaying
-  credentials
+Static inferences and context-dependent observations are reported as
+manual-validation leads, not confirmed vulnerabilities.
 
 ## Installation
 
-### Install via Cargo
+Install from crates.io:
 
 ```bash
-cargo install corrode-scanner
+cargo install corrode-scanner --locked
 ```
 
-For local development (from source):
+Or build from source:
+
 ```bash
 git clone https://github.com/ul0gic/corrode.git
 cd corrode
 cargo build --release
-./target/release/corrode-scanner --url https://example.com
 ```
+
+Prebuilt Linux and macOS binaries are available on the
+[GitHub Releases](https://github.com/ul0gic/corrode/releases) page.
 
 ### Requirements
 
-| Requirement          | Details                                    |
-| -------------------- | ------------------------------------------ |
-| Rust                 | 1.97.1 (install from [rustup.rs](https://rustup.rs)) |
-| cmake                | Build-time only — needed by the rustls TLS backend (`sudo apt install cmake` on Debian/Ubuntu, `brew install cmake` on macOS). Not required if you use a prebuilt release tarball. |
-| Chrome/Chromium      | Required for headless scanning (see below) |
-| OS                   | Linux/macOS                                |
+| Requirement | Notes |
+|-------------|-------|
+| Chrome or Chromium | Required at runtime; auto-detected from `PATH` and common install locations |
+| Rust 1.97.1 | Required when installing with Cargo or building from source |
+| CMake | Build-time dependency for the Rust TLS backend; unnecessary for prebuilt binaries |
+| Operating system | Linux or macOS |
 
-#### Installing Chrome/Chromium
+Override browser detection with `--chrome-bin <path>` or the `CHROME_BIN`
+environment variable.
 
-**Linux (Debian/Ubuntu):**
-```bash
-wget -q -O - https://dl.google.com/linux/linux_signing_key.pub | sudo gpg --dearmor -o /usr/share/keyrings/google-chrome.gpg
-echo "deb [arch=amd64 signed-by=/usr/share/keyrings/google-chrome.gpg] http://dl.google.com/linux/chrome/deb/ stable main" | sudo tee /etc/apt/sources.list.d/google-chrome.list
-sudo apt update && sudo apt install -y google-chrome-stable
-```
+## Quick Start
 
-**macOS:**
-```bash
-brew install --cask google-chrome
-```
+Scan one authorized target:
 
-Chrome is auto-detected via PATH and common install locations. Override with `--chrome-bin <path>` or `CHROME_BIN` env var if needed.
-
-## Usage
-
-### Command Line Options
-
-| Flag / Option          | Description                                                             | Default           | Required |
-| ---------------------- | ----------------------------------------------------------------------- | ----------------- | -------- |
-| `--url <URL>`          | Target URL to scan                                                      | –                 | One of --url or --file |
-| `--file <PATH>`        | File containing URLs to scan (one per line, `#` comments allowed)       | –                 | One of --url or --file |
-| `-o, --output <DIR>`   | Output directory (`REPORT.md`, `EVIDENCE.md`, and optional JSON per domain) | `corrode-output`  |          |
-| `--chrome-bin <PATH>`  | Path to Chrome/Chromium binary (overrides auto-detect)                  | auto-detect       |          |
-| `-t, --timeout <s>`    | Page-load timeout in seconds                                            | `30`              |          |
-| `-v, --verbose`        | Verbose progress + findings                                             | off               |          |
-| `--format <fmt>`       | Output format: `json`, `md`, or `both`                                  | `md`              |          |
-| `--config <PATH>`      | Path to a custom `.corrode.toml` config file                            | auto-discover     |          |
-| `--no-config`          | Ignore all config files, use built-in defaults only                     | off               |          |
-| `-h, --help`           | Show help                                                               | –                 |          |
-| `-V, --version`        | Show version                                                            | –                 |          |
-
-### Usage Examples
-
-Single target:
 ```bash
 corrode-scanner --url https://example.com
 ```
 
-Batch scan from a file:
+Write Markdown and JSON:
+
 ```bash
-corrode-scanner --file targets.txt
+corrode-scanner --url https://example.com --format both
 ```
 
-Custom output directory and timeout:
+Scan a list of targets:
+
 ```bash
-corrode-scanner --url https://example.com -o recon-$(date +%Y%m%d) -t 60 -v
+corrode-scanner --file targets.txt --output assessment
 ```
 
-JSON output only:
-```bash
-corrode-scanner --url https://example.com --format json
+`targets.txt` accepts one HTTP(S) URL per line. Blank lines and lines beginning
+with `#` are ignored.
+
+## Output
+
+Each target receives its own directory:
+
+```text
+corrode-output/
+└── example-com/
+    ├── REPORT.md
+    ├── EVIDENCE.md
+    └── scan_result.json
 ```
 
-Explicit Chrome binary override:
-```bash
-corrode-scanner --url https://example.com --chrome-bin "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
-```
+- `REPORT.md` prioritizes actionable findings, leads, remediation, and useful
+  attack-surface inventory.
+- `EVIDENCE.md` contains exhaustive passive observations, including network,
+  DOM, AST, source-map, route, and static-analysis details.
+- `scan_result.json` is emitted with `--format json` or `--format both` and uses
+  schema version `0.5`.
+- `SUMMARY.md` is added at the output root for multi-target scans.
 
-Use a specific config file:
-```bash
-corrode-scanner --url https://example.com --config /path/to/corrode.toml
-```
+Markdown redacts credential values. JSON retains complete evidence and should be
+handled as sensitive assessment data.
 
-Skip config file entirely:
-```bash
-corrode-scanner --url https://example.com --no-config
-```
+## Detection Coverage
 
-### Batch Scanning (`--file`)
+| Surface | Examples |
+|---------|----------|
+| Secrets and credentials | AWS, Azure, GCP, Supabase, Firebase, GitHub, GitLab, Stripe, Slack, OpenAI, Anthropic, database URLs, private keys, JWTs |
+| Sessions and storage | Access and refresh tokens, privileged JWT roles/scopes, expiry, tenant/account claims, persisted sessions, public client configuration |
+| Client-side attack surface | API endpoints, routes, manifests, source maps, DOM taint flows, gadgets, prototype-pollution heuristics, `postMessage` origin checks |
+| Security posture | Cookie flags, CORS, CSP and other security headers, mixed content, debug builds, exposed source maps |
+| Technology inventory | Frontend frameworks, servers, authentication, payments, analytics, CMS, API documentation, state management, cloud, and monitoring services |
+| Advisory correlation | React Server Components, Next.js, and WordPress advisories when sufficient passive version evidence is available |
 
-Create a target file with one URL per line. Blank lines and lines starting with `#` are ignored:
+Advisory matching includes the supported React RSC CVE cluster, Next.js
+middleware/SSRF/cache/auth/DoS advisories, and the July 2026 WordPress SQLi and
+RCE-chain ranges. Unknown or weakly inferred versions remain validation leads or
+inventory and do not raise headline risk.
 
-```
-# Production targets
-https://app.example.com
-https://api.example.com
+## Command-Line Options
 
-# Staging
-https://staging.example.com
-```
+| Option | Description | Default |
+|--------|-------------|---------|
+| `--url <URL>` | Scan one HTTP(S) target | No default |
+| `--file <PATH>` | Scan URLs from a file | No default |
+| `-o, --output <DIR>` | Output directory | `corrode-output` |
+| `--format <FORMAT>` | `md`, `json`, or `both` | `md` |
+| `-t, --timeout <SECS>` | Page-load timeout | `30` |
+| `--chrome-bin <PATH>` | Chrome/Chromium override | auto-detected |
+| `-v, --verbose` | Detailed progress output | off |
+| `--config <PATH>` | Explicit TOML configuration | auto-discovered |
+| `--no-config` | Ignore configuration files | off |
 
-Scan all targets:
-```bash
-corrode-scanner --file targets.txt -o pentest-$(date +%Y%m%d)
-```
-
-Corrode scans each URL in sequence, continues past failures, and writes a `SUMMARY.md` in the output root with per-target finding counts.
+Exactly one of `--url` or `--file` is required. Run
+`corrode-scanner --help` for the canonical CLI reference.
 
 ## Configuration
 
-Corrode auto-discovers `.corrode.toml` in the following order:
-1. `--config <PATH>` explicit override
-2. `./corrode.toml` in the current directory
-3. `~/.config/corrode/config.toml` global config
+Configuration is loaded in this order:
 
-CLI flags always take priority over config file values.
+1. `--config <PATH>`
+2. `./corrode.toml`
+3. `~/.config/corrode/config.toml`
 
-See `examples/corrode.toml` for a fully documented example with all supported options.
-
-### Minimal example:
+CLI values take precedence. A minimal configuration:
 
 ```toml
 [scan]
 timeout = 60
-verbose = true
 format = "both"
-output_dir = "recon-output"
+output_dir = "assessment"
 
 [patterns]
 ignore_patterns = ["internal_ip"]
 
 [[patterns.custom_patterns]]
-name = "My App API Key"
-pattern = 'myapp_[A-Za-z0-9]{32}'
+name = "Internal API Token"
+pattern = 'int_[A-Za-z0-9]{32,48}'
 severity = "critical"
 ```
 
-## Detected Secrets & Credentials
+See [`examples/corrode.toml`](examples/corrode.toml) for the full configuration
+reference.
 
-Corrode detects 45+ types of secrets and credentials:
+## Interpreting Results
 
-### Authentication & Authorization
-- **JWT Tokens** - Including Supabase service_role detection
-- **Bearer Tokens** - Authorization header tokens
-- **Basic Auth** - Base64 encoded credentials
-- **OAuth Client Secrets** - Google OAuth and others
-- **Private Keys** - RSA, EC, and OpenSSH private keys
+Severity describes potential impact. Confidence describes how strongly the
+captured evidence supports the assessment. A high-severity, low-confidence lead
+should be validated before escalation; an actionable finding has direct evidence
+and contributes to the headline risk rating.
 
-### Cloud Providers
-- **AWS Access Keys** - AKIA keys
-- **AWS Secret Keys** - Secret access keys
-- **AWS ARN** - Amazon Resource Names
-- **Firebase API Keys** - AIza keys
-- **Supabase URLs** - Project URLs
-- **Supabase Anon Keys** - Anonymous keys (classic and new sb_publishable_/sb_secret_ formats)
-- **DigitalOcean Tokens** - doo/dop/dor_v1_ tokens
-- **Vercel Tokens** - vc[pkiar]_ tokens
-- **Azure Storage** - Connection strings with account names and keys
-- **Azure AD Client Secrets** - Q~-prefixed secrets
-- **Azure SAS Tokens** - Shared access signature tokens
-- **GCP Service Accounts** - Service account email addresses
-- **Cloudflare Origin CA** - v1.0-prefixed Origin CA keys
-- **Heroku API Keys** - UUID format keys
+Corrode is reconnaissance, not proof of exploitability. Browser state varies
+with authentication, user interaction, feature flags, geography, and timing, so
+a scan can miss code paths or behavior that the loaded page did not expose.
 
-### AI Providers
-- **Anthropic API Keys** - sk-ant-api03- keys
-- **OpenAI API Keys** - sk- keys (disambiguated from Anthropic)
+## Authorized Use
 
-### Payment & Financial
-- **Stripe Publishable Keys** - pk_live/pk_test keys
-- **Stripe Secret Keys** - sk_live keys
-- **Stripe Restricted Keys** - rk_live keys
-- **Plaid Secrets** - Client ID and secret pairs
+Use Corrode only on systems you own or have explicit permission to assess. You
+are responsible for scope, legal authorization, handling captured data, and
+responsible disclosure. The software is provided without warranty and may
+produce false positives or miss vulnerabilities.
 
-### Communication & Collaboration
-- **Slack Tokens** - xox tokens
-- **Slack Webhooks** - Webhook URLs
-- **SendGrid Keys** - SG keys
-- **Mailgun Keys** - API keys
-- **Mailchimp Keys** - API keys
-- **Twilio Keys** - SK keys
-- **Twilio Account SIDs** - AC identifiers
-- **Postmark Tokens** - Server and account tokens
-- **Discord Tokens** - Bot and webhook tokens
+## License and Contributing
 
-### Monitoring & Observability
-- **Sentry DSN** - Project DSN URLs
-- **Sentry Auth Tokens** - sntrys_- prefixed tokens
-- **Datadog API Keys** - Context-anchored key detection
-- **Datadog App Keys** - Context-anchored application key detection
-- **PagerDuty API Keys** - Context-anchored token detection
+Corrode is licensed under
+[AGPL-3.0-only](https://www.gnu.org/licenses/agpl-3.0.html). See [LICENSE](LICENSE)
+for the complete terms and [CONTRIBUTING.md](CONTRIBUTING.md) before opening a
+pull request.
 
-### Project Management & Collaboration
-- **Linear API Keys** - lin_ prefixed tokens
-- **Notion API Keys** - ntn_ prefixed tokens
-- **Algolia Keys** - Context-anchored API key detection
-- **Mapbox Tokens** - pk./sk./tk. JWT-encoded tokens
-
-### Version Control & Development
-- **GitHub Tokens** - Personal access tokens (classic and fine-grained)
-- **GitLab Tokens** - Personal access tokens
-
-### Database Connection Strings
-- **PostgreSQL URLs** - Connection strings with credentials
-- **MongoDB URLs** - Connection strings with credentials
-- **MySQL URLs** - Connection strings with credentials
-- **Redis URLs** - Connection strings with credentials
-
-### Infrastructure & Environment
-- **Internal IPs** - Private network IP exposure (10.x, 172.16-31.x, 192.168.x)
-- **JWT in URLs** - Tokens passed in query parameters
-- **Netlify Tokens** - nfp_ prefixed tokens
-- **Exposed Env Vars** - REACT_APP_*, NEXT_PUBLIC_*, VITE_* references in JS
-
-## CVE Detection
-
-Corrode detects React and Next.js vulnerabilities by fingerprinting version strings and RSC module markers found in JavaScript bundles. When a version is confirmed vulnerable, findings are emitted at the researched severity. When Next.js is detected but the version is unknown, an informational advisory is emitted.
-
-| CVE | Component | Severity | Affected Versions | Type |
-|-----|-----------|----------|-------------------|------|
-| CVE-2025-55182 | React Server Components | Critical | react-server-dom-webpack < 19.1.0 | RCE |
-| CVE-2025-55183 | React Server Components | Medium | 19.0.0 – 19.2.2 | Source Code Exposure |
-| CVE-2025-55184 / CVE-2025-67779 | React Server Components | High | 19.0.0 – 19.2.2 | DoS |
-| CVE-2026-23864 | React Server Components | High | 19.0.0 – 19.2.3 | DoS |
-| CVE-2025-29927 | Next.js Middleware | Critical | < 15.2.3 | Auth Bypass |
-| CVE-2024-34351 | Next.js | High | < 14.1.1 | SSRF |
-| CVE-2024-46982 | Next.js | High | < 14.2.10 | Cache Poisoning |
-| CVE-2024-51479 | Next.js | High | 14.2.0 – 14.2.15 | Auth Bypass |
-| CVE-2024-56332 | Next.js | Medium | < 15.1.7 | DoS |
-
-> Next.js advisory **CVE-2025-66478** is the same RSC unauthenticated-RCE issue as **CVE-2025-55182** and is counted once, not double-reported.
-
-## Security Issue Detection
-- **Insecure Cookies** - Missing Secure, HttpOnly, or SameSite flags
-- **CORS Misconfiguration** - Detects wildcard Access-Control-Allow-Origin on first-party endpoints (filters out static assets, framework internals, and CDN resources)
-- **Missing Security Headers** - CSP, HSTS, X-Frame-Options, X-Content-Type-Options
-- **Mixed Content** - HTTP resources loaded on HTTPS pages
-- **Debug Mode Detection** - React development builds, Vue devtools, Angular debug, HMR signals in production
-- **Source Map Exposure** - Flags exposed source maps via `sourceMappingURL` comments, `SourceMap` headers, and CSS source maps
-
-### Technology Detection
-
-Corrode identifies 60+ technologies across 4 signal sources (runtime objects, HTTP headers, meta tags, script/network URLs):
-
-**Frontend Frameworks**: React, Vue.js, Angular, Svelte, Solid.js, Next.js (Pages/App Router), Nuxt.js, Remix, Gatsby, HTMX, Alpine.js, Livewire
-**Backend/Servers**: Express, Koa, Fastify, Axum, Actix, Warp, Hyper, Werkzeug, Tornado, Puma, Phoenix, Gin, Fiber, Echo, NestJS, AdonisJS, Sails.js
-**Backend-as-a-Service**: Supabase, Firebase, Appwrite, AWS Cognito
-**Authentication**: Auth0, Clerk, Okta, Google Sign-In, Apple Sign-In, Facebook Login, Google OAuth
-**Payment**: Stripe, PayPal, Square, Braintree
-**Analytics**: Google Analytics, GTM, Mixpanel, Segment, Amplitude, Heap, Hotjar, HubSpot
-**CMS**: WordPress, Drupal, Webflow, TYPO3, Craft CMS, Strapi
-**API Docs**: Swagger UI, ReDoc, RapiDoc
-**State Management**: Redux, Zustand, React Query, TanStack Router, Apollo Client, Relay
-**Cloud/Platform**: Vercel, Cloudflare
-**Monitoring**: Sentry, Intercom
-
-## Disclaimer
-
-**IMPORTANT: For Authorized Security Testing Only**
-
-This tool is designed for legitimate security research, penetration testing, and vulnerability assessment. By using Corrode, you agree to the following:
-
-- Only scan websites and applications you own or have explicit written permission to test
-- Use this tool for defensive security purposes, security research, and authorized penetration testing
-- Comply with all applicable laws and regulations in your jurisdiction
-- Respect responsible disclosure practices for any vulnerabilities discovered
-
-**We are NOT responsible for:**
-- Any unauthorized scanning or testing of websites without permission
-- Any damage, legal consequences, or violations resulting from misuse of this tool
-- Any actions taken based on the scan results
-- False positives or missed vulnerabilities in scan results
-
-**Legal Notice**: Unauthorized access to computer systems is illegal under laws such as the Computer Fraud and Abuse Act (CFAA) in the United States and similar legislation in other countries. Always obtain proper authorization before testing.
-
-Corrode is provided by **ul0gic** on an "as-is" basis with no warranty. You assume all responsibility for how you use the tool.
-
-## License
-
-Corrode is licensed under the **GNU Affero General Public License v3.0 (AGPL-3.0)**. See `LICENSE` for the complete terms. Highlights:
-- Any modifications or derivative works must remain AGPL and be published when distributed or offered as a hosted service.
-- Keep attribution to **ul0gic** and the Corrode project in downstream forks and hosted deployments.
-- Free for security research, internal assessments, and community contributions — commercial users simply follow the same AGPL requirements.
-- The software is provided without warranty; use it only when you have authorization.
-
-## Contributing
-
-Read `CONTRIBUTING.md` before opening a PR. Key points:
-- All patches are accepted under AGPL-3.0 and you confirm you have the right to contribute the code.
-- Public shoutouts, talks, and demos must credit Corrode and ul0gic.
-- Redistributed builds must keep license headers, this disclaimer, and README attribution intact.
-
-Questions about contributions? Open an issue or ping @ul0gic on GitHub.
-
-## Contact
-
-For questions, issues, or security concerns, please open an issue on GitHub.
+For questions, bug reports, or security concerns, open a
+[GitHub issue](https://github.com/ul0gic/corrode/issues).
