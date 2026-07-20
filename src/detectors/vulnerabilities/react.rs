@@ -1,7 +1,7 @@
 use regex::Regex;
 use std::sync::LazyLock;
 
-use crate::types::Vulnerability;
+use crate::types::{AssessmentDisposition, EvidenceSource, FindingEvidence, Vulnerability};
 
 // CVE-2025-55182 — RCE (Critical). Next.js's CVE-2025-66478 is a duplicate of
 // this; we emit only the one finding so they aren't double-counted.
@@ -49,6 +49,12 @@ pub fn detect_rsc_vulns(text: &str, source: &str) -> Vec<Vulnerability> {
             ),
             remediation: "Upgrade react-server-dom-* to 19.0.1/19.1.2/19.2.1 or framework patched versions (Next.js 15.x/16.x etc.).".to_owned(),
             url: Some(source.to_owned()),
+            disposition: AssessmentDisposition::Finding,
+            evidence: vec![FindingEvidence {
+                source: EvidenceSource::Ast,
+                location: Some(source.to_owned()),
+                summary: format!("Observed {pkg} version {ver}"),
+            }],
             confidence: None,
         });
     }
@@ -64,6 +70,12 @@ pub fn detect_rsc_vulns(text: &str, source: &str) -> Vec<Vulnerability> {
             ),
             remediation: "Upgrade react-server-dom-* to 19.0.3/19.1.4/19.2.3.".to_owned(),
             url: Some(source.to_owned()),
+            disposition: AssessmentDisposition::Finding,
+            evidence: vec![FindingEvidence {
+                source: EvidenceSource::Ast,
+                location: Some(source.to_owned()),
+                summary: format!("Observed react-server-dom version {ver}"),
+            }],
             confidence: None,
         });
     }
@@ -79,6 +91,12 @@ pub fn detect_rsc_vulns(text: &str, source: &str) -> Vec<Vulnerability> {
             ),
             remediation: "Upgrade react-server-dom-* to 19.0.3/19.1.4/19.2.3.".to_owned(),
             url: Some(source.to_owned()),
+            disposition: AssessmentDisposition::Finding,
+            evidence: vec![FindingEvidence {
+                source: EvidenceSource::Ast,
+                location: Some(source.to_owned()),
+                summary: format!("Observed react-server-dom version {ver}"),
+            }],
             confidence: None,
         });
     }
@@ -94,6 +112,12 @@ pub fn detect_rsc_vulns(text: &str, source: &str) -> Vec<Vulnerability> {
             ),
             remediation: "Upgrade react-server-dom-* to 19.0.4/19.1.5/19.2.4.".to_owned(),
             url: Some(source.to_owned()),
+            disposition: AssessmentDisposition::Finding,
+            evidence: vec![FindingEvidence {
+                source: EvidenceSource::Ast,
+                location: Some(source.to_owned()),
+                summary: format!("Observed react-server-dom version {ver}"),
+            }],
             confidence: None,
         });
     }

@@ -1,11 +1,12 @@
-use crate::types::{SecurityAnalysis, Vulnerability};
+use crate::types::{
+    AssessmentDisposition, EvidenceSource, FindingEvidence, SecurityAnalysis, Vulnerability,
+};
 
 pub(crate) fn analyze_security(
     cookies: &[chromiumoxide::cdp::browser_protocol::network::Cookie],
     calls: &[crate::types::ApiCall],
     target_url: &str,
 ) -> (Vec<Vulnerability>, SecurityAnalysis) {
-    let mut vulnerabilities = Vec::new();
     let mut insecure_cookies = Vec::new();
     let mut cors_issues = Vec::new();
     let mut missing_headers = Vec::new();
@@ -16,17 +17,6 @@ pub(crate) fn analyze_security(
         if !cookie.secure || !cookie.http_only {
             insecure_cookies.push(cookie.name.clone());
         }
-    }
-
-    if !insecure_cookies.is_empty() {
-        vulnerabilities.push(Vulnerability {
-            vuln_type: "Insecure Cookies".to_owned(),
-            severity: "medium".to_owned(),
-            description: "Cookies missing Secure/HttpOnly flags".to_owned(),
-            remediation: "Set Secure and HttpOnly flags on all session cookies".to_owned(),
-            url: None,
-            confidence: None,
-        });
     }
 
     let target_is_https = target_url.starts_with("https://");
@@ -65,47 +55,13 @@ pub(crate) fn analyze_security(
         }
     }
 
-    // Add vulnerabilities for findings
-    if !cors_issues.is_empty() {
-        vulnerabilities.push(Vulnerability {
-            vuln_type: "CORS Misconfiguration".to_owned(),
-            severity: "medium".to_owned(),
-            description: format!(
-                "Wildcard Access-Control-Allow-Origin found on {} endpoint(s)",
-                cors_issues.len()
-            ),
-            remediation: "Restrict CORS to specific trusted origins instead of using wildcard (*)"
-                .to_owned(),
-            url: None,
-            confidence: None,
-        });
-    }
-
-    if !missing_headers.is_empty() {
-        vulnerabilities.push(Vulnerability {
-            vuln_type: "Missing Security Headers".to_owned(),
-            severity: "low".to_owned(),
-            description: format!("Missing headers: {}", missing_headers.join(", ")),
-            remediation: "Add security headers: CSP, HSTS, X-Frame-Options, X-Content-Type-Options"
-                .to_owned(),
-            url: None,
-            confidence: None,
-        });
-    }
-
-    if !mixed_content.is_empty() {
-        vulnerabilities.push(Vulnerability {
-            vuln_type: "Mixed Content".to_owned(),
-            severity: "low".to_owned(),
-            description: format!(
-                "{} HTTP resource(s) loaded on HTTPS page",
-                mixed_content.len()
-            ),
-            remediation: "Ensure all resources are loaded over HTTPS".to_owned(),
-            url: None,
-            confidence: None,
-        });
-    }
+    let vulnerabilities = validation_leads(
+        &insecure_cookies,
+        &cors_issues,
+        &missing_headers,
+        &mixed_content,
+        target_url,
+    );
 
     let security = SecurityAnalysis {
         missing_headers,
@@ -115,6 +71,108 @@ pub(crate) fn analyze_security(
     };
 
     (vulnerabilities, security)
+}
+
+fn validation_leads(
+    insecure_cookies: &[String],
+    cors_issues: &[String],
+    missing_headers: &[String],
+    mixed_content: &[String],
+    target_url: &str,
+) -> Vec<Vulnerability> {
+    let mut vulnerabilities = Vec::new();
+
+    if !insecure_cookies.is_empty() {
+        vulnerabilities.push(validation_lead(
+            "Insecure Cookies",
+            "medium",
+            "Cookies missing Secure/HttpOnly flags",
+            "Set Secure and HttpOnly flags on all session cookies",
+            insecure_cookies
+                .iter()
+                .map(|name| FindingEvidence {
+                    source: EvidenceSource::Dom,
+                    location: Some(format!("Cookie: {name}")),
+                    summary: "Cookie is missing Secure and/or HttpOnly".to_owned(),
+                })
+                .collect(),
+        ));
+    }
+
+    if !cors_issues.is_empty() {
+        vulnerabilities.push(validation_lead(
+            "CORS Misconfiguration",
+            "medium",
+            &format!(
+                "Wildcard Access-Control-Allow-Origin found on {} endpoint(s)",
+                cors_issues.len()
+            ),
+            "Restrict CORS to specific trusted origins instead of using wildcard (*)",
+            cors_issues
+                .iter()
+                .map(|url| FindingEvidence {
+                    source: EvidenceSource::Network,
+                    location: Some(url.clone()),
+                    summary: "Observed Access-Control-Allow-Origin: *".to_owned(),
+                })
+                .collect(),
+        ));
+    }
+
+    if !missing_headers.is_empty() {
+        vulnerabilities.push(validation_lead(
+            "Missing Security Headers",
+            "low",
+            &format!("Missing headers: {}", missing_headers.join(", ")),
+            "Add security headers: CSP, HSTS, X-Frame-Options, X-Content-Type-Options",
+            vec![FindingEvidence {
+                source: EvidenceSource::Header,
+                location: Some(target_url.to_owned()),
+                summary: format!("Missing headers: {}", missing_headers.join(", ")),
+            }],
+        ));
+    }
+
+    if !mixed_content.is_empty() {
+        vulnerabilities.push(validation_lead(
+            "Mixed Content",
+            "low",
+            &format!(
+                "{} HTTP resource(s) loaded on HTTPS page",
+                mixed_content.len()
+            ),
+            "Ensure all resources are loaded over HTTPS",
+            mixed_content
+                .iter()
+                .map(|url| FindingEvidence {
+                    source: EvidenceSource::Network,
+                    location: Some(url.clone()),
+                    summary: "HTTP resource observed on an HTTPS page".to_owned(),
+                })
+                .collect(),
+        ));
+    }
+
+    vulnerabilities
+}
+
+fn validation_lead(
+    vuln_type: &str,
+    severity: &str,
+    description: &str,
+    remediation: &str,
+    evidence: Vec<FindingEvidence>,
+) -> Vulnerability {
+    Vulnerability {
+        vuln_type: vuln_type.to_owned(),
+        severity: severity.to_owned(),
+        description: description.to_owned(),
+        remediation: remediation.to_owned(),
+        url: None,
+        disposition: AssessmentDisposition::Lead,
+        evidence,
+        confidence: None,
+    }
 }
 
 /// Check the main document response for missing security headers.

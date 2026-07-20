@@ -7,7 +7,7 @@ Built with Rust and chromiumoxide for fast, headless scanning. Corrode performs 
 [![CI](https://github.com/ul0gic/corrode/actions/workflows/ci.yml/badge.svg)](https://github.com/ul0gic/corrode/actions/workflows/ci.yml)
 [![crates.io](https://img.shields.io/crates/v/corrode-scanner.svg)](https://crates.io/crates/corrode-scanner)
 [![Downloads](https://img.shields.io/crates/d/corrode-scanner.svg)](https://crates.io/crates/corrode-scanner)
-[![Rust](https://img.shields.io/badge/rust-1.70%2B-orange.svg)](https://www.rust-lang.org/)
+[![Rust](https://img.shields.io/badge/rust-1.97.1-orange.svg)](https://www.rust-lang.org/)
 [![License: AGPL v3](https://img.shields.io/badge/license-AGPL--3.0-blue.svg)](LICENSE)
 
 ## Project Structure
@@ -45,23 +45,24 @@ src/
 │   │   └── gadgets.rs        #   Gadget inventory + CSP-bypass correlation
 │   ├── confidence.rs         # Confidence scoring engine (severity × confidence)
 │   ├── scoring.rs            # Per-finding-type confidence application
+│   ├── session.rs            # Passive storage/session risk classification
 │   ├── security/             # Security analysis
 │   │   └── mod.rs            #   Cookie, header, CORS, mixed content checks
 │   ├── technologies/         # Technology fingerprinting (4 signal sources)
 │   │   ├── headers.rs        #   HTTP response header signatures
 │   │   ├── meta.rs           #   HTML meta tag generators
 │   │   ├── runtime.rs        #   Window object detection
-│   │   └── scripts.rs        #   Script URLs + network request patterns
+│   │   ├── scripts.rs        #   Script URLs + network request patterns
+│   │   └── wordpress.rs      #   Passive WordPress version evidence
 │   └── vulnerabilities/      # Per-framework CVE detection
 │       ├── nextjs.rs         #   Next.js CVEs
 │       ├── react.rs          #   React Server Components CVEs
-│       └── rsc.rs            #   RSC deep passive mode (Flight/server-action markers)
+│       ├── rsc.rs            #   RSC deep passive mode (Flight/server-action markers)
+│       └── wordpress.rs      #   WordPress SQLi/RCE advisory correlation
 ├── network/                  # Network monitor
 ├── reporting/
-│   ├── json.rs               # JSON output (schema_version, confidence fields)
-│   └── markdown/             # Section-based Markdown report: summary, findings,
-│                             #   security, network, technologies, sourcemaps,
-│                             #   taint, appendix
+│   ├── json.rs               # Complete JSON evidence (schema 0.5)
+│   └── markdown/             # REPORT.md + exhaustive EVIDENCE.md
 ├── scanner/
 │   ├── chrome.rs             # Chrome binary resolution
 │   └── workflow.rs           # Browser orchestration and scan workflow
@@ -110,7 +111,9 @@ graph TD
 - **Deep Analysis** - Extracts and scans HTML, JavaScript bundles, inline scripts, and external resources
 - **Network Monitoring** - Tracks all HTTP requests, API calls, and third-party domains
 - **Pattern Matching** - Detects 45+ types of secrets and credentials across 10 service categories
-- **Comprehensive Reporting** - JSON results and detailed Markdown reports per site
+- **Decision-focused Reporting** - Concise `REPORT.md` separates actionable findings,
+  manual-validation leads, and inventory; exhaustive observations remain in
+  `EVIDENCE.md` and JSON
 - **Multi-URL Batch Scanning** - Scan a list of targets from a file with `--file targets.txt`
 - **Config File Support** - Persistent settings and custom patterns via `.corrode.toml`
 
@@ -135,6 +138,13 @@ Corrode turns frontend build artifacts into structured manual-testing leads. Eve
 - **Client-Side Taint & Gadget Mapping** - Static source→sink flow analysis over the parsed AST (e.g. `location.search → URLSearchParams.get("redirect") → innerHTML`), prototype-pollution surface, a postMessage handler/origin-check mapper, a gadget inventory with exploitability hints, and CSP-bypass correlation against the page's own policy
 - **RSC Deep Passive Mode** - Detects React Server Components Flight endpoints, server-action markers, and App Router evidence, correlated against the RSC CVE table with an explicit observed-vs-inferred evidence level
 - **Confidence Scoring** - Every finding is scored on a confidence axis (orthogonal to severity) from evidence count, source type, first- vs third-party origin, and runtime-observed signals — surfaced as `High severity / Medium confidence` and sorted by confidence within severity in both report formats
+- **Passive WordPress Advisory Detection** - Correlates already-observed generator
+  versions with CVE-2026-60137 and CVE-2026-63030 without probing REST routes or
+  sending exploit traffic
+- **Storage and Session Risk Analysis** - Classifies already-observed access and
+  refresh tokens, privileged JWTs, persisted sessions, and public configuration;
+  decodes security-relevant JWT claims locally without validating or replaying
+  credentials
 
 ## Installation
 
@@ -156,7 +166,7 @@ cargo build --release
 
 | Requirement          | Details                                    |
 | -------------------- | ------------------------------------------ |
-| Rust                 | 1.70+ (install from [rustup.rs](https://rustup.rs)) |
+| Rust                 | 1.97.1 (install from [rustup.rs](https://rustup.rs)) |
 | cmake                | Build-time only — needed by the rustls TLS backend (`sudo apt install cmake` on Debian/Ubuntu, `brew install cmake` on macOS). Not required if you use a prebuilt release tarball. |
 | Chrome/Chromium      | Required for headless scanning (see below) |
 | OS                   | Linux/macOS                                |
@@ -185,7 +195,7 @@ Chrome is auto-detected via PATH and common install locations. Override with `--
 | ---------------------- | ----------------------------------------------------------------------- | ----------------- | -------- |
 | `--url <URL>`          | Target URL to scan                                                      | –                 | One of --url or --file |
 | `--file <PATH>`        | File containing URLs to scan (one per line, `#` comments allowed)       | –                 | One of --url or --file |
-| `-o, --output <DIR>`   | Output directory (`<output>/<domain>/scan_result.json`, `REPORT.md`)    | `corrode-output`  |          |
+| `-o, --output <DIR>`   | Output directory (`REPORT.md`, `EVIDENCE.md`, and optional JSON per domain) | `corrode-output`  |          |
 | `--chrome-bin <PATH>`  | Path to Chrome/Chromium binary (overrides auto-detect)                  | auto-detect       |          |
 | `-t, --timeout <s>`    | Page-load timeout in seconds                                            | `30`              |          |
 | `-v, --verbose`        | Verbose progress + findings                                             | off               |          |

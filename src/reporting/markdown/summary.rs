@@ -1,4 +1,6 @@
-use crate::types::{Confidence, ConfidenceLevel, ScanResult};
+use crate::types::{AssessmentDisposition, Confidence, ConfidenceLevel, ScanResult};
+
+use super::assessment::{secret_disposition, vulnerability_disposition, wordpress_lead};
 
 /// Human label for a confidence level, e.g. `Medium confidence`.
 pub fn confidence_label(level: ConfidenceLevel) -> &'static str {
@@ -151,7 +153,7 @@ struct SeverityCounts {
     medium: usize,
     low: usize,
     info: usize,
-    security_issues: usize,
+    leads: usize,
 }
 
 fn count_findings(result: &ScanResult) -> SeverityCounts {
@@ -161,29 +163,61 @@ fn count_findings(result: &ScanResult) -> SeverityCounts {
         medium: 0,
         low: 0,
         info: 0,
-        security_issues: result.security.missing_headers.len()
-            + result.security.cors_issues.len()
-            + result.security.insecure_cookies.len()
-            + result.security.mixed_content.len(),
+        leads: usize::from(wordpress_lead(result).is_some()),
     };
 
-    for pattern_name in result.secrets.keys() {
-        match secret_severity(pattern_name) {
-            "CRITICAL" => counts.critical += 1,
-            "HIGH" => counts.high += 1,
-            "LOW" => counts.low += 1,
-            "INFO" => counts.info += 1,
-            _ => counts.medium += 1,
+    for (pattern_name, findings) in &result.secrets {
+        for finding in findings {
+            if !finding.matches.is_empty()
+                && finding.matches.iter().all(|value| {
+                    result
+                        .storage_assessments
+                        .iter()
+                        .any(|assessment| assessment.value == *value)
+                })
+            {
+                continue;
+            }
+            match secret_disposition(pattern_name, finding) {
+                AssessmentDisposition::Finding => match secret_severity(pattern_name) {
+                    "CRITICAL" => counts.critical += 1,
+                    "HIGH" => counts.high += 1,
+                    "LOW" => counts.low += 1,
+                    "INFO" => counts.info += 1,
+                    _ => counts.medium += 1,
+                },
+                AssessmentDisposition::Lead => counts.leads += 1,
+                AssessmentDisposition::Inventory => {}
+            }
         }
     }
 
     for vuln in &result.vulnerabilities {
+        if vulnerability_disposition(vuln) != AssessmentDisposition::Finding {
+            counts.leads +=
+                usize::from(vulnerability_disposition(vuln) == AssessmentDisposition::Lead);
+            continue;
+        }
         match vuln.severity.to_lowercase().as_str() {
             "critical" => counts.critical += 1,
             "high" => counts.high += 1,
             "low" => counts.low += 1,
             "info" => counts.info += 1,
             _ => counts.medium += 1,
+        }
+    }
+
+    for assessment in &result.storage_assessments {
+        match assessment.disposition {
+            AssessmentDisposition::Lead => counts.leads += 1,
+            AssessmentDisposition::Inventory => {}
+            AssessmentDisposition::Finding => match assessment.severity.to_lowercase().as_str() {
+                "critical" => counts.critical += 1,
+                "high" => counts.high += 1,
+                "low" => counts.low += 1,
+                "info" => counts.info += 1,
+                _ => counts.medium += 1,
+            },
         }
     }
 
@@ -229,13 +263,13 @@ fn render_risk_and_metrics(report: &mut Vec<String>, result: &ScanResult, counts
         "| Network requests captured | {} |",
         result.network.total_requests
     ));
-    report.push(format!("| Security issues | {} |", counts.security_issues));
+    report.push(format!("| Manual-validation leads | {} |", counts.leads));
     report.push(String::new());
 
     let total = counts.critical + counts.high + counts.medium + counts.low + counts.info;
-    if total == 0 && counts.security_issues == 0 {
+    if total == 0 && counts.leads == 0 {
         report.push(
-            "No secrets, vulnerabilities, or security issues were detected during this scan."
+            "No actionable findings or manual-validation leads were detected during this scan."
                 .to_owned(),
         );
     } else {
@@ -261,11 +295,8 @@ fn render_risk_and_metrics(report: &mut Vec<String>, result: &ScanResult, counts
                 total_matches
             ));
         }
-        if counts.security_issues > 0 {
-            parts.push(format!(
-                "{} security configuration issue(s)",
-                counts.security_issues
-            ));
+        if counts.leads > 0 {
+            parts.push(format!("{} manual-validation lead(s)", counts.leads));
         }
         report.push(format!("This scan identified: {}.\n", parts.join("; ")));
     }
@@ -297,4 +328,30 @@ pub(crate) fn render_summary(result: &ScanResult) -> Vec<String> {
     }
 
     report
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::types::{AssessmentDisposition, Vulnerability};
+
+    #[test]
+    fn validation_lead_does_not_raise_headline_risk() {
+        let mut result = ScanResult::default();
+        result.vulnerabilities.push(Vulnerability {
+            vuln_type: "CORS Misconfiguration".to_owned(),
+            severity: "medium".to_owned(),
+            description: "context-dependent wildcard".to_owned(),
+            remediation: "validate exposure".to_owned(),
+            url: None,
+            disposition: AssessmentDisposition::Lead,
+            evidence: Vec::new(),
+            confidence: None,
+        });
+
+        let summary = render_summary(&result).join("\n");
+        assert!(summary.contains("**Risk Level**: [.] INFO"));
+        assert!(summary.contains("| MEDIUM findings | 0 |"));
+        assert!(summary.contains("| Manual-validation leads | 1 |"));
+    }
 }

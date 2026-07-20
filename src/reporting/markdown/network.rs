@@ -33,13 +33,10 @@ fn is_api_like(url: &str) -> bool {
 }
 
 fn format_calls_table(calls: &[ApiCall]) -> Vec<String> {
-    let mut lines = Vec::new();
-    lines.push("```".to_owned());
-    let header_auth = "AUTH";
-    lines.push(format!(
-        "{:<6} {:<6} {:<18} {:<60} {}",
-        "METHOD", "CODE", "CT", "URL", header_auth
-    ));
+    let mut lines = vec![
+        "| Method | Status | Content Type | URL | Auth hints |".to_owned(),
+        "|--------|-------:|--------------|-----|------------|".to_owned(),
+    ];
     for call in calls {
         let method = if call.method.is_empty() {
             "GET".to_owned()
@@ -51,19 +48,16 @@ fn format_calls_table(calls: &[ApiCall]) -> Vec<String> {
         } else {
             call.status.to_string()
         };
-        let url = truncate_middle(&call.url, 60);
+        let url = truncate_middle(&call.url, 120).replace('|', "\\|");
         let hints = header_hints(&call.request_headers);
-        let ct = content_type_for_call(call).unwrap_or_else(|| "-".to_owned());
+        let ct = content_type_for_call(call)
+            .unwrap_or_else(|| "-".to_owned())
+            .replace('|', "\\|");
         lines.push(format!(
-            "{:<6} {:<6} {:<18} {:<60} {}",
-            method,
-            status,
-            truncate_middle(&ct, 18),
-            url,
-            hints
+            "| {method} | {status} | {} | `{url}` | {hints} |",
+            truncate_middle(&ct, 40)
         ));
     }
-    lines.push("```".to_owned());
     lines
 }
 
@@ -87,11 +81,10 @@ fn header_value<'a>(
 }
 
 /// Extract the domain from a URL for grouping.
-fn extract_domain(url_str: &str) -> String {
+fn extract_domain(url_str: &str) -> Option<String> {
     url::Url::parse(url_str)
         .ok()
         .and_then(|u| u.host_str().map(std::borrow::ToOwned::to_owned))
-        .unwrap_or_else(|| "unknown".to_owned())
 }
 
 pub(crate) fn render_network(result: &ScanResult) -> Vec<String> {
@@ -125,8 +118,7 @@ pub(crate) fn render_network(result: &ScanResult) -> Vec<String> {
         .calls
         .iter()
         .filter(|c| {
-            let call_domain = extract_domain(&c.url);
-            call_domain == target_domain
+            extract_domain(&c.url).is_some_and(|call_domain| Some(call_domain) == target_domain)
         })
         .collect();
     let third_party: Vec<&ApiCall> = result
@@ -134,8 +126,7 @@ pub(crate) fn render_network(result: &ScanResult) -> Vec<String> {
         .calls
         .iter()
         .filter(|c| {
-            let call_domain = extract_domain(&c.url);
-            call_domain != target_domain
+            extract_domain(&c.url).is_some_and(|call_domain| Some(call_domain) != target_domain)
         })
         .collect();
 
@@ -147,7 +138,10 @@ pub(crate) fn render_network(result: &ScanResult) -> Vec<String> {
 
     // External domains contacted
     if !third_party.is_empty() {
-        let mut domains: Vec<String> = third_party.iter().map(|c| extract_domain(&c.url)).collect();
+        let mut domains: Vec<String> = third_party
+            .iter()
+            .filter_map(|c| extract_domain(&c.url))
+            .collect();
         domains.sort();
         domains.dedup();
 
@@ -158,7 +152,7 @@ pub(crate) fn render_network(result: &ScanResult) -> Vec<String> {
             for domain in &domains {
                 let count = third_party
                     .iter()
-                    .filter(|c| extract_domain(&c.url) == *domain)
+                    .filter(|c| extract_domain(&c.url).as_deref() == Some(domain.as_str()))
                     .count();
                 report.push(format!("| {domain} | {count} |"));
             }

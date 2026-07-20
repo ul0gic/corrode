@@ -4,6 +4,7 @@ pub mod manifests;
 pub mod scoring;
 pub mod secrets;
 pub mod security;
+pub mod session;
 pub mod sourcemaps;
 pub mod taint;
 pub mod technologies;

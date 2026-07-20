@@ -1,7 +1,8 @@
 [package]
 name = "corrode-scanner"
-version = "0.4.0"
+version = "0.5.0"
 edition = "2021"
+rust-version = "1.97.1"
 authors = ["ul0gic"]
 description = "Passive web reconnaissance tool for extracting secrets, credentials, and security data"
 license = "AGPL-3.0-only"

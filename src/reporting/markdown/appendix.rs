@@ -1,4 +1,6 @@
-use crate::types::ScanResult;
+use crate::types::{AssessmentDisposition, ScanResult};
+
+use super::assessment::{secret_disposition, vulnerability_disposition};
 
 pub(crate) fn render_appendix(result: &ScanResult) -> Vec<String> {
     let mut report = Vec::new();
@@ -27,7 +29,11 @@ pub(crate) fn render_appendix(result: &ScanResult) -> Vec<String> {
 pub(crate) fn render_recommendations(result: &ScanResult) -> Vec<String> {
     let mut recs = Vec::new();
 
-    if !result.secrets.is_empty() {
+    if result.secrets.iter().any(|(pattern, findings)| {
+        findings
+            .iter()
+            .any(|finding| secret_disposition(pattern, finding) == AssessmentDisposition::Finding)
+    }) {
         recs.push("**Immediately rotate** any exposed secrets and credentials".to_owned());
     }
 
@@ -43,10 +49,22 @@ pub(crate) fn render_recommendations(result: &ScanResult) -> Vec<String> {
 
     let has_critical_or_high = result.vulnerabilities.iter().any(|v| {
         let s = v.severity.to_lowercase();
-        s == "critical" || s == "high"
+        vulnerability_disposition(v) == AssessmentDisposition::Finding
+            && (s == "critical" || s == "high")
     });
     if has_critical_or_high {
         recs.push("Review and remediate all HIGH and CRITICAL vulnerabilities".to_owned());
+    }
+
+    if result
+        .storage_assessments
+        .iter()
+        .any(|assessment| assessment.disposition == AssessmentDisposition::Finding)
+    {
+        recs.push(
+            "Rotate exposed session credentials and minimize long-lived material in browser-visible storage"
+                .to_owned(),
+        );
     }
 
     if !result.javascript.debug_mode.is_empty() {

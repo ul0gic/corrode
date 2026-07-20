@@ -2,6 +2,7 @@ pub mod headers;
 pub mod meta;
 pub mod runtime;
 pub mod scripts;
+pub mod wordpress;
 
 use chromiumoxide::Page;
 use serde_json::Value;
@@ -40,7 +41,17 @@ pub async fn detect_all(
     technologies.dedup();
 
     // Version extraction (React, Next.js)
-    let versions = runtime::extract_versions(page, scripts).await;
+    let mut versions = runtime::extract_versions(page, scripts).await;
+
+    // WordPress uses only already-captured DOM/network/script evidence.
+    let wordpress = wordpress::detect(calls, meta_tags, scripts);
+    if wordpress.detected && !technologies.iter().any(|tech| tech == "WordPress") {
+        technologies.push("WordPress".to_owned());
+        technologies.sort();
+    }
+    if let Some(version) = wordpress.version {
+        versions.push(version);
+    }
 
     TechFingerprint {
         technologies,

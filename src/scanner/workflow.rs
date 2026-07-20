@@ -18,7 +18,7 @@ use crate::detectors::{
     manifests, scoring,
     secrets::SecretScanner,
     security::analyze_security,
-    sourcemaps, taint, technologies, vulnerabilities,
+    session, sourcemaps, taint, technologies, vulnerabilities,
 };
 use crate::network::monitor::NetworkMonitor;
 use crate::reporting::{json as json_report, markdown};
@@ -552,6 +552,17 @@ async fn scan_url(
     let taint_flows = taint::analyze(&script_refs);
     let post_message_handlers = taint::postmessage::detect(&script_refs);
     let gadgets = taint::gadgets::inventory(&script_refs, csp_header);
+    let cookie_values: Vec<(&str, &str)> = raw_cookies
+        .iter()
+        .map(|cookie| (cookie.name.as_str(), cookie.value.as_str()))
+        .collect();
+    let storage_assessments = session::analyze(
+        &local_storage,
+        &session_storage,
+        &cookie_values,
+        &all_calls,
+        &window_objects,
+    );
 
     let mut result = ScanResult {
         url: url.clone(),
@@ -589,6 +600,7 @@ async fn scan_url(
         technologies: tech.technologies,
         technology_versions,
         vulnerabilities: all_vulns,
+        storage_assessments,
         comments,
         api_tests: vec![],
         source_maps_intel: source_map_report.intel,

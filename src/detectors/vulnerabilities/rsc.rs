@@ -5,7 +5,7 @@ use std::sync::LazyLock;
 use regex::Regex;
 
 use super::react::detect_rsc_vulns;
-use crate::types::Vulnerability;
+use crate::types::{AssessmentDisposition, EvidenceSource, FindingEvidence, Vulnerability};
 
 // `self.__next_f.push(...)` / bare `__next_f` Flight-stream bootstrap, plus the
 // `N:` row prefixes the Flight wire format emits. These are App-Router-only.
@@ -115,19 +115,20 @@ pub fn detect<S: BuildHasher>(
 }
 
 fn inferred_advisory(surface: &RscSurface) -> Vulnerability {
-    let mut evidence = Vec::new();
+    let mut evidence_labels = Vec::new();
     if surface.app_router {
-        evidence.push("App Router");
+        evidence_labels.push("App Router");
     }
     if surface.flight_markers {
-        evidence.push("Flight stream (__next_f)");
+        evidence_labels.push("Flight stream (__next_f)");
     }
     if surface.server_dom {
-        evidence.push("react-server-dom-*");
+        evidence_labels.push("react-server-dom-*");
     }
     if surface.server_actions {
-        evidence.push("server-action markers");
+        evidence_labels.push("server-action markers");
     }
+    let evidence_summary = evidence_labels.join(", ");
 
     Vulnerability {
         vuln_type: "React RSC surface (advisory — version unknown)".to_owned(),
@@ -135,17 +136,22 @@ fn inferred_advisory(surface: &RscSurface) -> Vulnerability {
         // not inflate severity rollups alongside observed CVE findings.
         severity: "info".to_owned(),
         description: format!(
-            "inferred: RSC/App Router surface detected ({}), version unknown — verify the \
+            "inferred: RSC/App Router surface detected ({evidence_summary}), version unknown — verify the \
              react-server-dom-* version against the CVE cluster CVE-2025-55182 (RCE), \
              CVE-2025-55183 (source exposure), CVE-2025-55184/CVE-2025-67779 and \
-             CVE-2026-23864 (DoS). No vulnerable version was observed on this page.",
-            evidence.join(", ")
+             CVE-2026-23864 (DoS). No vulnerable version was observed on this page."
         ),
         remediation: "Determine the react-server-dom-* version (build manifests, bundle, or \
                       framework release notes) and confirm it is patched to 19.0.4/19.1.5/19.2.4 \
                       or later."
             .to_owned(),
         url: None,
+        disposition: AssessmentDisposition::Lead,
+        evidence: vec![FindingEvidence {
+            source: EvidenceSource::Ast,
+            location: None,
+            summary: evidence_summary,
+        }],
         confidence: None,
     }
 }

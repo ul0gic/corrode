@@ -48,7 +48,7 @@ pub struct Args {
     )]
     pub file: Option<PathBuf>,
 
-    /// Output directory for scan results (per-domain `scan_result.json` + REPORT.md)
+    /// Output directory for per-domain REPORT.md, EVIDENCE.md, and optional JSON
     #[arg(short, long, default_value = "corrode-output", value_name = "DIR")]
     pub output: PathBuf,
 

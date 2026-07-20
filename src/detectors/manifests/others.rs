@@ -141,7 +141,7 @@ fn parse_chunks(chunk_names: &[String]) -> OtherResult {
             continue;
         };
         // Numeric-only / hash-only chunk names carry no semantic value.
-        if stem.is_empty() || stem.chars().all(|c| c.is_ascii_digit()) {
+        if is_opaque_chunk_stem(&stem) {
             continue;
         }
         out.routes.push(&stem, "component", "chunk-graph");
@@ -181,7 +181,36 @@ static CHUNK_STEM_RE: LazyLock<Regex> =
 fn chunk_stem(url: &str) -> Option<String> {
     let file = url.rsplit('/').next().unwrap_or(url);
     let caps = CHUNK_STEM_RE.captures(file)?;
-    Some(caps[1].to_owned())
+    let stem = caps[1].to_owned();
+    (!is_opaque_chunk_stem(&stem)).then_some(stem)
+}
+
+fn is_opaque_chunk_stem(stem: &str) -> bool {
+    const GENERIC_NAMES: &[&str] = &[
+        "app",
+        "chunk",
+        "index",
+        "main",
+        "polyfills",
+        "runtime",
+        "script",
+        "signals",
+        "vendor",
+    ];
+    let lower = stem.to_ascii_lowercase();
+    let generated_base36 = stem.len() >= 10
+        && stem
+            .chars()
+            .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || matches!(c, '-' | '_'))
+        && (stem.chars().next().is_some_and(|c| c.is_ascii_digit())
+            || stem.chars().filter(char::is_ascii_digit).count() >= 3);
+
+    stem.is_empty()
+        || stem.chars().all(|c| c.is_ascii_digit())
+        || (stem.len() >= 6 && stem.chars().all(|c| c.is_ascii_hexdigit()))
+        || lower.starts_with("turbopack-")
+        || GENERIC_NAMES.contains(&lower.as_str())
+        || generated_base36
 }
 
 #[cfg(test)]
@@ -230,6 +259,10 @@ mod tests {
         let chunks = vec![
             "https://x.com/assets/UserProfile-a1b2c3d4.js".to_owned(),
             "/assets/4821.f00dface.js".to_owned(),
+            "/assets/4bd1b6969f4bc4de.js".to_owned(),
+            "/assets/3vbhzvz8piokj.js".to_owned(),
+            "/assets/turbopack-2gg2hg3eylmef.js".to_owned(),
+            "/assets/script.js".to_owned(),
             "/_app/immutable/nodes/Dashboard-deadbeef.js".to_owned(),
         ];
         let out = parse(None, None, &chunks, &[]);
@@ -237,6 +270,10 @@ mod tests {
         assert!(names.contains(&"UserProfile".to_owned()));
         assert!(names.contains(&"Dashboard".to_owned()));
         assert!(!names.iter().any(|n| n.chars().all(|c| c.is_ascii_digit())));
+        assert!(!names.contains(&"4bd1b6969f4bc4de".to_owned()));
+        assert!(!names.contains(&"3vbhzvz8piokj".to_owned()));
+        assert!(!names.contains(&"turbopack-2gg2hg3eylmef".to_owned()));
+        assert!(!names.contains(&"script".to_owned()));
     }
 
     #[test]

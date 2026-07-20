@@ -13,6 +13,8 @@ pub struct ScanResult {
     pub technologies: Vec<String>,
     pub technology_versions: Vec<TechnologyVersion>,
     pub vulnerabilities: Vec<Vulnerability>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub storage_assessments: Vec<StorageAssessment>,
     pub comments: Vec<Comment>,
     pub api_tests: Vec<ApiTestResult>,
     // Skipped from JSON when empty so pre-0.4 output is unchanged.
@@ -168,9 +170,72 @@ pub struct Vulnerability {
     pub description: String,
     pub remediation: String,
     pub url: Option<String>,
+    /// Whether this assessment is actionable, needs validation, or is inventory.
+    #[serde(default)]
+    pub disposition: AssessmentDisposition,
+    /// Explicit provenance for the assessment. `url` remains for schema compatibility.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub evidence: Vec<FindingEvidence>,
     // Orthogonal to severity; None until scored.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub confidence: Option<Confidence>,
+}
+
+/// Reporting disposition. Only `Finding` contributes to headline risk.
+#[derive(Debug, Serialize, Deserialize, Clone, Copy, PartialEq, Eq, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum AssessmentDisposition {
+    #[default]
+    Finding,
+    Lead,
+    Inventory,
+}
+
+/// A concrete, typed observation supporting an assessment.
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+pub struct FindingEvidence {
+    pub source: EvidenceSource,
+    pub location: Option<String>,
+    pub summary: String,
+}
+
+/// Passive classification of session-related material already visible to the browser.
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct StorageAssessment {
+    pub classification: StorageRiskClass,
+    pub keys: Vec<String>,
+    pub value: String,
+    pub severity: String,
+    pub disposition: AssessmentDisposition,
+    pub evidence: Vec<FindingEvidence>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub jwt_claims: Option<JwtClaims>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub confidence: Option<Confidence>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone, Copy, PartialEq, Eq, Hash)]
+#[serde(rename_all = "snake_case")]
+pub enum StorageRiskClass {
+    PrivilegedJwt,
+    AccessToken,
+    RefreshToken,
+    PersistedSession,
+    PublicConfiguration,
+    AmbiguousSensitiveName,
+}
+
+/// Security-relevant JWT claims decoded locally without validating or replaying the token.
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq, Default)]
+pub struct JwtClaims {
+    pub issuer: Option<String>,
+    pub audience: Vec<String>,
+    pub expires_at: Option<i64>,
+    pub expired: Option<bool>,
+    pub roles: Vec<String>,
+    pub scopes: Vec<String>,
+    pub tenants: Vec<String>,
+    pub accounts: Vec<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]

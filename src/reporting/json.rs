@@ -6,7 +6,7 @@ use crate::types::ScanResult;
 
 /// Report schema version, emitted as a top-level `schema_version` marker.
 /// Strictly additive: pre-0.4 consumers that ignore unknown keys are unaffected.
-const SCHEMA_VERSION: &str = "0.4";
+const SCHEMA_VERSION: &str = "0.5";
 
 pub fn write(path: &Path, result: &ScanResult) -> Result<()> {
     // Serialize through a tagged value so the schema marker is additive — no
@@ -52,7 +52,7 @@ mod tests {
         let raw = fs::read_to_string(&path).expect("read json");
         let parsed: serde_json::Value = serde_json::from_str(&raw).expect("parse json");
 
-        assert_eq!(parsed["schema_version"], "0.4");
+        assert_eq!(parsed["schema_version"], "0.5");
         assert_eq!(
             parsed["secrets"]["aws_key"][0]["confidence"]["level"],
             "high"

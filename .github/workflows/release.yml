@@ -45,7 +45,7 @@ jobs:
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@fa04a1451ff1842e2626ccb99004d0195b455a88 # commit 2026-03-27 (no release tags)
         with:
-          toolchain: 1.96.0
+          toolchain: 1.97.1
           targets: ${{ matrix.target }}
 
       - name: Cache Cargo
@@ -119,7 +119,7 @@ jobs:
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@fa04a1451ff1842e2626ccb99004d0195b455a88 # commit 2026-03-27 (no release tags)
         with:
-          toolchain: 1.96.0
+          toolchain: 1.97.1
 
       - name: Publish to crates.io
         run: cargo publish

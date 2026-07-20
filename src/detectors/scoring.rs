@@ -2,8 +2,9 @@ use crate::detectors::confidence::{
     self, EntropySignal, Exploitability, FindingCategory, FindingInputs, Origin, Suppressor,
 };
 use crate::types::{
-    Confidence, EvidenceSource, Gadget, PostMessageHandler, RouteSurface, ScanResult,
-    SecretFinding, SourceMapIntel, TaintFlow, Vulnerability,
+    AssessmentDisposition, Confidence, EvidenceSource, Gadget, PostMessageHandler, RouteSurface,
+    ScanResult, SecretFinding, SourceMapIntel, StorageAssessment, StorageRiskClass, TaintFlow,
+    Vulnerability,
 };
 
 /// Three-state, not the `bool` `is_first_party` helpers: those default unknown
@@ -52,6 +53,9 @@ pub fn score_all(result: &mut ScanResult, target_host: Option<&str>) {
     for vuln in &mut result.vulnerabilities {
         vuln.confidence = Some(score_vulnerability(vuln, target_host));
     }
+    for assessment in &mut result.storage_assessments {
+        assessment.confidence = Some(score_storage_assessment(assessment, target_host));
+    }
     for intel in &mut result.source_maps_intel {
         intel.confidence = Some(score_source_map(intel, target_host));
     }
@@ -67,6 +71,55 @@ pub fn score_all(result: &mut ScanResult, target_host: Option<&str>) {
     for route in &mut result.route_surface {
         route.confidence = Some(score_route(route, target_host));
     }
+}
+
+fn score_storage_assessment(
+    assessment: &StorageAssessment,
+    target_host: Option<&str>,
+) -> Confidence {
+    let sources: Vec<EvidenceSource> = assessment
+        .evidence
+        .iter()
+        .map(|evidence| evidence.source)
+        .collect();
+    let origin = assessment
+        .evidence
+        .iter()
+        .find(|evidence| evidence.source == EvidenceSource::Network)
+        .and_then(|evidence| evidence.location.as_deref())
+        .and_then(|location| location.split_whitespace().next())
+        .map_or(Origin::FirstParty, |url| classify_origin(url, target_host));
+    let exploitability = match assessment.classification {
+        StorageRiskClass::PrivilegedJwt | StorageRiskClass::RefreshToken => {
+            Exploitability::PrivilegedNoPrecondition
+        }
+        StorageRiskClass::AccessToken | StorageRiskClass::PersistedSession => Exploitability::None,
+        StorageRiskClass::AmbiguousSensitiveName => Exploitability::PreconditionUnmet,
+        StorageRiskClass::PublicConfiguration => Exploitability::Benign,
+    };
+    let entropy = match assessment.classification {
+        StorageRiskClass::PrivilegedJwt
+        | StorageRiskClass::AccessToken
+        | StorageRiskClass::RefreshToken
+        | StorageRiskClass::PersistedSession => entropy_signal(&assessment.value),
+        StorageRiskClass::PublicConfiguration | StorageRiskClass::AmbiguousSensitiveName => {
+            EntropySignal::NotApplicable
+        }
+    };
+
+    confidence::score(&FindingInputs {
+        runtime_observed: sources.contains(&EvidenceSource::Runtime),
+        evidence_count: u32::try_from(assessment.evidence.len())
+            .unwrap_or(u32::MAX)
+            .max(1),
+        sources,
+        category: FindingCategory::SecretOrVersion,
+        origin,
+        entropy,
+        constant_assignment: false,
+        exploitability,
+        suppressor: None,
+    })
 }
 
 // --- SecretFinding -------------------------------------------------------
@@ -236,22 +289,28 @@ pub(crate) fn score_secret(
 // --- Vulnerability -------------------------------------------------------
 
 pub(crate) fn score_vulnerability(vuln: &Vulnerability, target_host: Option<&str>) -> Confidence {
-    // `inferred:` prefix means the surface is present but no concrete version was
-    // observed: the CVE precondition is not met.
-    let inferred = vuln.description.to_lowercase().contains("inferred:");
+    let inferred = vuln.disposition != AssessmentDisposition::Finding
+        || vuln.description.to_lowercase().contains("inferred:");
 
-    let source = vuln.url.as_deref().map_or(EvidenceSource::Header, |url| {
-        // A version observed in a recovered source map vs on the wire vs a header.
-        if is_map_url(url) {
-            EvidenceSource::SourceMap
-        } else {
-            EvidenceSource::Network
-        }
-    });
+    // Prefer detector-supplied provenance. Legacy assessments without explicit
+    // evidence fall back to the URL, but absence of a URL no longer means Header.
+    let mut sources: Vec<EvidenceSource> = vuln.evidence.iter().map(|e| e.source).collect();
+    if sources.is_empty() {
+        sources.push(vuln.url.as_deref().map_or(EvidenceSource::Dom, |url| {
+            if is_map_url(url) {
+                EvidenceSource::SourceMap
+            } else {
+                EvidenceSource::Network
+            }
+        }));
+    }
 
     let origin = vuln
-        .url
-        .as_deref()
+        .evidence
+        .iter()
+        .filter_map(|e| e.location.as_deref())
+        .find(|location| url::Url::parse(location).is_ok())
+        .or(vuln.url.as_deref())
         .map_or(Origin::FirstParty, |url| classify_origin(url, target_host));
 
     let exploitability = if inferred {
@@ -262,11 +321,13 @@ pub(crate) fn score_vulnerability(vuln: &Vulnerability, target_host: Option<&str
     };
 
     let inputs = FindingInputs {
-        sources: vec![source],
-        evidence_count: 1,
+        runtime_observed: sources.contains(&EvidenceSource::Runtime),
+        evidence_count: u32::try_from(vuln.evidence.len())
+            .unwrap_or(u32::MAX)
+            .max(1),
+        sources,
         category: FindingCategory::SecretOrVersion,
         origin,
-        runtime_observed: false,
         entropy: EntropySignal::NotApplicable,
         constant_assignment: false,
         exploitability,
@@ -598,6 +659,8 @@ mod tests {
             description: "Observed react-server-dom 18.2.0".to_owned(),
             remediation: "upgrade".to_owned(),
             url: Some("https://app.example.com/main.js".to_owned()),
+            disposition: AssessmentDisposition::Finding,
+            evidence: Vec::new(),
             confidence: None,
         };
         let inferred = Vulnerability {
@@ -621,6 +684,8 @@ mod tests {
             description: "d".to_owned(),
             remediation: "r".to_owned(),
             url: None,
+            disposition: AssessmentDisposition::Finding,
+            evidence: Vec::new(),
             confidence: None,
         });
         result.source_maps_intel.push(SourceMapIntel {

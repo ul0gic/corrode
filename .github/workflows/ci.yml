@@ -33,7 +33,7 @@ jobs:
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@fa04a1451ff1842e2626ccb99004d0195b455a88 # commit 2026-03-27 (no release tags)
         with:
-          toolchain: 1.96.0
+          toolchain: 1.97.1
           components: rustfmt, clippy
 
       - name: Cache Cargo
@@ -78,7 +78,7 @@ jobs:
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@fa04a1451ff1842e2626ccb99004d0195b455a88 # commit 2026-03-27 (no release tags)
         with:
-          toolchain: 1.96.0
+          toolchain: 1.97.1
 
       - name: Cache Cargo
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
@@ -113,7 +113,7 @@ jobs:
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@fa04a1451ff1842e2626ccb99004d0195b455a88 # commit 2026-03-27 (no release tags)
         with:
-          toolchain: 1.96.0
+          toolchain: 1.97.1
 
       - name: Cache Cargo
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
@@ -147,7 +147,7 @@ jobs:
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@fa04a1451ff1842e2626ccb99004d0195b455a88 # commit 2026-03-27 (no release tags)
         with:
-          toolchain: 1.96.0
+          toolchain: 1.97.1
 
       - name: Install cargo-audit
         run: cargo install cargo-audit --locked

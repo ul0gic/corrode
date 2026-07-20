@@ -1,7 +1,11 @@
 use std::cmp::Reverse;
 
-use crate::types::{ApiTestResult, Confidence, ScanResult};
+use crate::types::{
+    ApiTestResult, AssessmentDisposition, Confidence, JwtClaims, ScanResult, StorageAssessment,
+    StorageRiskClass,
+};
 
+use super::assessment::{secret_disposition, vulnerability_disposition};
 use super::summary::{
     confidence_sort_key, redact_value, secret_severity, severity_confidence, severity_rank,
     truncate_middle,
@@ -18,6 +22,7 @@ struct Finding {
     location: Option<String>,
     remediation: Option<String>,
     confidence: Option<Confidence>,
+    evidence_basis: Option<String>,
 }
 
 /// Top factor note from a confidence breakdown, for the rendered "why" line.
@@ -27,14 +32,39 @@ fn confidence_why(confidence: Option<&Confidence>) -> Option<String> {
     Some(note.note.clone())
 }
 
-pub(crate) fn render_secrets(result: &ScanResult) -> Vec<String> {
+pub(crate) fn render_findings(result: &ScanResult) -> Vec<String> {
+    render_assessments(
+        result,
+        Some(AssessmentDisposition::Finding),
+        "Actionable Findings",
+    )
+}
+
+pub(crate) fn render_evidence_findings(result: &ScanResult) -> Vec<String> {
+    render_assessments(result, None, "All Finding Candidates")
+}
+
+pub(crate) fn render_lead_assessments(result: &ScanResult) -> Vec<String> {
+    render_assessments(
+        result,
+        Some(AssessmentDisposition::Lead),
+        "Manual Validation Leads",
+    )
+}
+
+fn render_assessments(
+    result: &ScanResult,
+    disposition: Option<AssessmentDisposition>,
+    title: &str,
+) -> Vec<String> {
     let mut report = Vec::new();
 
-    if result.secrets.is_empty() && result.vulnerabilities.is_empty() {
+    if result.secrets.is_empty()
+        && result.vulnerabilities.is_empty()
+        && result.storage_assessments.is_empty()
+    {
         return report;
     }
-
-    report.push("---\n## Findings\n".to_owned());
 
     // Collect all findings into a flat list with severity
     let mut findings: Vec<Finding> = Vec::new();
@@ -43,6 +73,19 @@ pub(crate) fn render_secrets(result: &ScanResult) -> Vec<String> {
     for (pattern_name, secret_findings) in &result.secrets {
         let severity = secret_severity(pattern_name).to_owned();
         for sf in secret_findings {
+            if !sf.matches.is_empty()
+                && sf.matches.iter().all(|value| {
+                    result
+                        .storage_assessments
+                        .iter()
+                        .any(|assessment| assessment.value == *value)
+                })
+            {
+                continue;
+            }
+            if disposition.is_some_and(|wanted| secret_disposition(pattern_name, sf) != wanted) {
+                continue;
+            }
             let value_display = format_secret_values(&sf.matches);
             findings.push(Finding {
                 severity: severity.clone(),
@@ -54,24 +97,18 @@ pub(crate) fn render_secrets(result: &ScanResult) -> Vec<String> {
                 location: None,
                 remediation: Some(secret_remediation(pattern_name)),
                 confidence: sf.confidence.clone(),
+                evidence_basis: None,
             });
         }
     }
 
-    // Vulnerabilities -> findings
-    for vuln in &result.vulnerabilities {
-        findings.push(Finding {
-            severity: vuln.severity.to_uppercase(),
-            title: vuln.vuln_type.clone(),
-            finding_type: "Vulnerability".to_owned(),
-            source: vuln.url.as_deref().unwrap_or("Scan target").to_owned(),
-            value: None,
-            context: vuln.description.clone(),
-            location: vuln.url.clone(),
-            remediation: Some(vuln.remediation.clone()),
-            confidence: vuln.confidence.clone(),
-        });
+    collect_structured_assessments(result, disposition, &mut findings);
+
+    if findings.is_empty() {
+        return report;
     }
+
+    report.push(format!("---\n## {title}\n"));
 
     // Sort by severity (critical first), then by confidence within each band.
     findings.sort_by_key(|f| {
@@ -100,7 +137,11 @@ pub(crate) fn render_secrets(result: &ScanResult) -> Vec<String> {
                 "**Assessment**: {}",
                 severity_confidence(sev, finding.confidence.as_ref())
             ));
-            if let Some(why) = confidence_why(finding.confidence.as_ref()) {
+            if let Some(why) = finding
+                .evidence_basis
+                .clone()
+                .or_else(|| confidence_why(finding.confidence.as_ref()))
+            {
                 report.push(format!("**Confidence basis**: {why}"));
             }
             report.push(format!("**Source**: {}", finding.source));
@@ -124,6 +165,168 @@ pub(crate) fn render_secrets(result: &ScanResult) -> Vec<String> {
     }
 
     report
+}
+
+fn collect_structured_assessments(
+    result: &ScanResult,
+    disposition: Option<AssessmentDisposition>,
+    findings: &mut Vec<Finding>,
+) {
+    for vuln in &result.vulnerabilities {
+        if disposition.is_some_and(|wanted| vulnerability_disposition(vuln) != wanted) {
+            continue;
+        }
+        findings.push(Finding {
+            severity: vuln.severity.to_uppercase(),
+            title: vuln.vuln_type.clone(),
+            finding_type: "Vulnerability".to_owned(),
+            source: vuln
+                .evidence
+                .first()
+                .and_then(|evidence| evidence.location.as_deref())
+                .or(vuln.url.as_deref())
+                .unwrap_or("Scan target")
+                .to_owned(),
+            value: None,
+            context: vuln.description.clone(),
+            location: vuln.url.clone(),
+            remediation: Some(vuln.remediation.clone()),
+            confidence: vuln.confidence.clone(),
+            evidence_basis: vuln
+                .evidence
+                .first()
+                .map(|evidence| format!("{:?}: {}", evidence.source, evidence.summary)),
+        });
+    }
+
+    for assessment in &result.storage_assessments {
+        if disposition.is_some_and(|wanted| assessment.disposition != wanted) {
+            continue;
+        }
+        findings.push(storage_finding(assessment));
+    }
+}
+
+fn storage_finding(assessment: &StorageAssessment) -> Finding {
+    Finding {
+        severity: assessment.severity.to_uppercase(),
+        title: storage_title(assessment.classification).to_owned(),
+        finding_type: "Stored Session Material".to_owned(),
+        source: assessment
+            .evidence
+            .first()
+            .and_then(|evidence| evidence.location.as_deref())
+            .unwrap_or("Browser-observed state")
+            .to_owned(),
+        value: Some(redact_value(&assessment.value)),
+        context: storage_context(assessment),
+        location: None,
+        remediation: Some(storage_remediation(assessment.classification).to_owned()),
+        confidence: assessment.confidence.clone(),
+        evidence_basis: assessment
+            .evidence
+            .first()
+            .map(|evidence| format!("{:?}: {}", evidence.source, evidence.summary)),
+    }
+}
+
+pub(crate) fn storage_title(classification: StorageRiskClass) -> &'static str {
+    match classification {
+        StorageRiskClass::PrivilegedJwt => "Privileged JWT in Browser-Visible State",
+        StorageRiskClass::AccessToken => "Access Token in Browser-Visible State",
+        StorageRiskClass::RefreshToken => "Refresh Token in Browser-Visible State",
+        StorageRiskClass::PersistedSession => "Persisted Session Material",
+        StorageRiskClass::PublicConfiguration => "Public Client Configuration",
+        StorageRiskClass::AmbiguousSensitiveName => "Sensitive Session-Related Name",
+    }
+}
+
+fn storage_context(assessment: &StorageAssessment) -> String {
+    let mut context = match assessment.classification {
+        StorageRiskClass::PrivilegedJwt => {
+            "A JWT with privileged role or scope claims was directly observed in state available to the browser."
+        }
+        StorageRiskClass::AccessToken => {
+            "Access-token material was directly observed in browser-visible state."
+        }
+        StorageRiskClass::RefreshToken => {
+            "Refresh-token material was directly observed in browser-visible state and may extend session access."
+        }
+        StorageRiskClass::PersistedSession => {
+            "Opaque session material was directly observed in browser-visible state."
+        }
+        StorageRiskClass::PublicConfiguration => {
+            "The observed value is public-by-design, anonymous, or already expired and is retained as inventory."
+        }
+        StorageRiskClass::AmbiguousSensitiveName => {
+            "A session-related name was observed, but its value was not credential-shaped; manual validation is required."
+        }
+    }
+    .to_owned();
+
+    if let Some(claims) = &assessment.jwt_claims {
+        let rendered = render_claims(claims);
+        if !rendered.is_empty() {
+            context.push_str(" Decoded claims: ");
+            context.push_str(&rendered);
+            context.push('.');
+        }
+    }
+    context
+}
+
+fn render_claims(claims: &JwtClaims) -> String {
+    let mut parts = Vec::new();
+    if let Some(issuer) = &claims.issuer {
+        parts.push(format!("issuer `{issuer}`"));
+    }
+    if !claims.audience.is_empty() {
+        parts.push(format!("audience `{}`", claims.audience.join(", ")));
+    }
+    if let Some(expiry) = claims.expires_at {
+        let state = if claims.expired == Some(true) {
+            "expired"
+        } else {
+            "not expired at scan time"
+        };
+        parts.push(format!("expiry `{expiry}` ({state})"));
+    }
+    if !claims.roles.is_empty() {
+        parts.push(format!("roles `{}`", claims.roles.join(", ")));
+    }
+    if !claims.scopes.is_empty() {
+        parts.push(format!("scopes `{}`", claims.scopes.join(", ")));
+    }
+    if !claims.tenants.is_empty() {
+        parts.push(format!("tenants `{}`", claims.tenants.join(", ")));
+    }
+    if !claims.accounts.is_empty() {
+        parts.push(format!("accounts `{}`", claims.accounts.join(", ")));
+    }
+    parts.join("; ")
+}
+
+fn storage_remediation(classification: StorageRiskClass) -> &'static str {
+    match classification {
+        StorageRiskClass::PrivilegedJwt => {
+            "Revoke the token, remove privileged credentials from browser-delivered state, and move privileged operations server-side."
+        }
+        StorageRiskClass::AccessToken => {
+            "Minimize token lifetime and browser persistence; prefer HttpOnly, Secure, SameSite session cookies where the architecture permits."
+        }
+        StorageRiskClass::RefreshToken => {
+            "Rotate the refresh token and avoid persisting long-lived refresh credentials in script-readable storage."
+        }
+        StorageRiskClass::PersistedSession => {
+            "Review whether persistent browser storage is necessary and apply short expiry, rotation, and secure cookie controls."
+        }
+        StorageRiskClass::PublicConfiguration => {
+            "No credential rotation is indicated; confirm the value is intentionally public and least-privileged."
+        }
+        StorageRiskClass::AmbiguousSensitiveName => {
+            "Verify the value's purpose and sensitivity before treating it as a credential."
+        }
+    }
 }
 
 fn push_api_test(report: &mut Vec<String>, test: &ApiTestResult) {
@@ -268,5 +471,36 @@ fn secret_remediation(pattern_name: &str) -> String {
         "github" | "github_fine" | "gitlab" => "Revoke the token and generate a new one with minimum required scopes.".to_owned(),
         "postgres_url" | "mongodb_url" | "mysql_url" | "redis_url" => "Change database credentials immediately. Use server-side API proxies.".to_owned(),
         _ => "Rotate the exposed credential and ensure it is only used server-side.".to_owned(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::types::{EvidenceSource, FindingEvidence, StorageAssessment};
+
+    #[test]
+    fn storage_values_are_redacted_but_claims_and_provenance_render() {
+        let token = "session-secret-material-1234567890";
+        let mut result = ScanResult::default();
+        result.storage_assessments.push(StorageAssessment {
+            classification: StorageRiskClass::RefreshToken,
+            keys: vec!["refresh_token".to_owned()],
+            value: token.to_owned(),
+            severity: "high".to_owned(),
+            disposition: AssessmentDisposition::Finding,
+            evidence: vec![FindingEvidence {
+                source: EvidenceSource::Runtime,
+                location: Some("localStorage `refresh_token`".to_owned()),
+                summary: "Refresh-token material observed".to_owned(),
+            }],
+            jwt_claims: None,
+            confidence: None,
+        });
+
+        let markdown = render_findings(&result).join("\n");
+        assert!(markdown.contains("Refresh Token in Browser-Visible State"));
+        assert!(markdown.contains("localStorage `refresh_token`"));
+        assert!(!markdown.contains(token));
     }
 }

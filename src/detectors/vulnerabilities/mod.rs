@@ -1,6 +1,7 @@
 pub mod nextjs;
 pub mod react;
 pub mod rsc;
+pub mod wordpress;
 
 use crate::types::{TechnologyVersion, Vulnerability};
 
@@ -9,6 +10,7 @@ pub fn check_all(versions: &[TechnologyVersion]) -> Vec<Vulnerability> {
     let mut vulns = Vec::new();
 
     vulns.extend(nextjs::check_cves(versions));
+    vulns.extend(wordpress::check_cves(versions));
 
     vulns
 }
