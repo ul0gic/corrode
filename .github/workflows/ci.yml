@@ -31,7 +31,7 @@ jobs:
           persist-credentials: false
 
       - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@fa04a1451ff1842e2626ccb99004d0195b455a88 # commit 2026-03-27 (no release tags)
+        uses: dtolnay/rust-toolchain@2c7215f132e9ebf062739d9130488b56d53c060c # commit 2026-03-27 (no release tags)
         with:
           toolchain: 1.97.1
           components: rustfmt, clippy
@@ -76,7 +76,7 @@ jobs:
           }
 
       - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@fa04a1451ff1842e2626ccb99004d0195b455a88 # commit 2026-03-27 (no release tags)
+        uses: dtolnay/rust-toolchain@2c7215f132e9ebf062739d9130488b56d53c060c # commit 2026-03-27 (no release tags)
         with:
           toolchain: 1.97.1
 
@@ -111,7 +111,7 @@ jobs:
           persist-credentials: false
 
       - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@fa04a1451ff1842e2626ccb99004d0195b455a88 # commit 2026-03-27 (no release tags)
+        uses: dtolnay/rust-toolchain@2c7215f132e9ebf062739d9130488b56d53c060c # commit 2026-03-27 (no release tags)
         with:
           toolchain: 1.97.1
 
@@ -145,7 +145,7 @@ jobs:
           persist-credentials: false
 
       - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@fa04a1451ff1842e2626ccb99004d0195b455a88 # commit 2026-03-27 (no release tags)
+        uses: dtolnay/rust-toolchain@2c7215f132e9ebf062739d9130488b56d53c060c # commit 2026-03-27 (no release tags)
         with:
           toolchain: 1.97.1
 
