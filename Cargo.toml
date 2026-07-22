@@ -42,7 +42,7 @@ base64 = "0.22"
 swc_common = "23.0"
 swc_ecma_ast = "25.0"
 swc_ecma_parser = { version = "41.0", features = ["typescript"] }
-swc_ecma_visit = "25.0"
+swc_ecma_visit = "26.0"
 toml = "1.1"
 dirs = "6"
 
