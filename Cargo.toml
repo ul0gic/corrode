@@ -44,7 +44,7 @@ swc_ecma_ast = "29.0"
 swc_ecma_parser = { version = "45.1", features = ["typescript"] }
 swc_ecma_visit = "29.0"
 toml = "1.1"
-dirs = "6"
+dirs = "7"
 
 [lints.clippy]
 # === DENY GROUPS (fail the build on sharp edges) ===
