@@ -1,6 +1,6 @@
 [package]
 name = "corrode-scanner"
-version = "0.5.2"
+version = "0.5.3"
 edition = "2021"
 rust-version = "1.97.1"
 authors = ["ul0gic"]
@@ -38,13 +38,13 @@ colored = "3.1"
 reqwest = { version = "0.13", features = ["json"] }
 chrono = "0.4"
 lazy_static = "1.4"
-base64 = "0.22"
+base64 = "0.23"
 swc_common = "26.0"
 swc_ecma_ast = "29.0"
 swc_ecma_parser = { version = "45.1", features = ["typescript"] }
 swc_ecma_visit = "29.0"
 toml = "1.1"
-dirs = "6"
+dirs = "7"
 
 [lints.clippy]
 # === DENY GROUPS (fail the build on sharp edges) ===
