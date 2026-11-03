@@ -1,11 +1,11 @@
 [package]
 name = "corrode-scanner"
-version = "0.5.3"
+version = "0.5.4"
 edition = "2021"
 rust-version = "1.97.1"
 authors = ["ul0gic"]
 description = "Passive web reconnaissance tool for extracting secrets, credentials, and security data"
-license = "MIT OR Apache-2.0"
+license = "MIT"
 repository = "https://github.com/ul0gic/corrode"
 homepage = "https://github.com/ul0gic/corrode"
 documentation = "https://docs.rs/corrode"
@@ -37,11 +37,11 @@ url = "2.5"
 colored = "3.1"
 reqwest = { version = "0.13", features = ["json"] }
 chrono = "0.4"
-lazy_static = "1.4"
+lazy_static = "1.5"
 base64 = "0.23"
 swc_common = "26.0"
 swc_ecma_ast = "29.0"
-swc_ecma_parser = { version = "45.1", features = ["typescript"] }
+swc_ecma_parser = { version = "46.0", features = ["typescript"] }
 swc_ecma_visit = "29.0"
 toml = "1.1"
 dirs = "7"

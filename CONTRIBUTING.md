@@ -3,11 +3,11 @@
 Thank you for wanting to improve Corrode! To keep the project aligned with ul0gic's goals, please follow these guidelines:
 
 1. **License Alignment**
-   - All contributions are accepted under the project's dual MIT or Apache-2.0 terms.
-   - By opening a pull request, you confirm you have the rights to the code and that it may be redistributed under either license.
+   - All contributions are accepted under the project's MIT License.
+   - By opening a pull request, you confirm you have the rights to the code and that it may be redistributed under that license.
 
 2. **Attribution**
-   - Preserve the copyright and license notices required by your chosen license.
+   - Preserve the copyright and license notices required by the MIT License.
    - Public credit to **ul0gic** and a link to the repository are appreciated.
 
 3. **Reuse**
