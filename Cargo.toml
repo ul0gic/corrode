@@ -40,7 +40,7 @@ chrono = "0.4"
 lazy_static = "1.5"
 base64 = "0.23"
 swc_common = "26.0"
-swc_ecma_ast = "29.0"
+swc_ecma_ast = "30.0"
 swc_ecma_parser = { version = "46.0", features = ["typescript"] }
 swc_ecma_visit = "29.0"
 toml = "1.1"
