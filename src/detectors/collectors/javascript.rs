@@ -11,7 +11,7 @@ use tokio::time::{self, Duration};
 use url::Url;
 
 use super::ast;
-use crate::api::discovery::extract_api_endpoints;
+use crate::detectors::endpoints::extract_api_endpoints;
 use crate::detectors::secrets::SecretScanner;
 use crate::scanner::page_utils;
 use crate::types::{AstFinding, DiscoveredEndpoint};

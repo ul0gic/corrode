@@ -5,6 +5,8 @@
 pub mod collectors;
 /// Confidence scoring from evidence signals.
 pub mod confidence;
+/// API endpoint candidates inferred from captured JavaScript.
+pub mod endpoints;
 /// Framework manifest analysis.
 pub mod manifests;
 /// Confidence assignment for scan results.

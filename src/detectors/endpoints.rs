@@ -37,7 +37,7 @@ lazy_static! {
 /// Extracts distinct endpoint candidates from JavaScript using pattern matches.
 ///
 /// ```
-/// # use corrode_scanner::api::discovery::extract_api_endpoints;
+/// # use corrode_scanner::detectors::endpoints::extract_api_endpoints;
 /// assert_eq!(extract_api_endpoints("fetch('/api/users')", "app.js")[0].url, "/api/users");
 /// ```
 pub fn extract_api_endpoints(code: &str, source: &str) -> Vec<DiscoveredEndpoint> {

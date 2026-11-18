@@ -24,23 +24,11 @@ use crate::detectors::{
     session, sourcemaps, taint, technologies, vulnerabilities,
 };
 use crate::network::monitor::NetworkMonitor;
-use crate::reporting::{json as json_report, markdown};
+use crate::reporting::{json as json_report, markdown, ScanOutcome, ScanStatus};
 use crate::scanner::chrome::resolve_chrome_binary;
 use crate::scanner::page_utils;
 use crate::types::{DomAnalysis, JavaScriptAnalysis, NetworkAnalysis, ScanResult};
 use chromiumoxide::browser::{Browser, BrowserConfig};
-
-struct ScanOutcome {
-    url: String,
-    secrets: usize,
-    vulns: usize,
-    status: ScanStatus,
-}
-
-enum ScanStatus {
-    Success,
-    Failed(String),
-}
 
 /// Runs configured scans and writes reports; exits with status 1 if any target fails.
 ///
@@ -285,7 +273,7 @@ pub async fn run(config: Config) -> Result<()> {
     println!("{}", "=".repeat(60).dimmed());
 
     if is_batch && matches!(output_format, OutputFormat::Md | OutputFormat::Both) {
-        write_batch_summary(output_root.as_ref(), &outcomes, total_secrets, total_vulns)?;
+        markdown::batch::write(output_root.as_ref(), &outcomes, total_secrets, total_vulns)?;
     }
 
     if any_failed {
@@ -303,55 +291,6 @@ fn resolve_urls(config: &Config) -> Result<Vec<String>> {
         return Ok(vec![url.clone()]);
     }
     anyhow::bail!("No URLs to scan. Provide --url or --file.");
-}
-
-fn write_batch_summary(
-    output_dir: &Path,
-    outcomes: &[ScanOutcome],
-    total_secrets: usize,
-    total_vulns: usize,
-) -> Result<()> {
-    let mut lines = Vec::new();
-    lines.push("# Corrode Batch Scan Summary\n".to_owned());
-    lines.push(format!("**Scan Date**: {}", Utc::now().to_rfc3339()));
-    lines.push(format!("**Targets Scanned**: {}", outcomes.len()));
-
-    let succeeded = outcomes
-        .iter()
-        .filter(|o| matches!(o.status, ScanStatus::Success))
-        .count();
-    let failed = outcomes.len() - succeeded;
-
-    lines.push(format!("**Succeeded**: {succeeded}"));
-    lines.push(format!("**Failed**: {failed}"));
-    lines.push(format!("**Total Secrets**: {total_secrets}"));
-    lines.push(format!("**Total Vulnerabilities**: {total_vulns}\n"));
-
-    lines.push("---\n".to_owned());
-    lines.push("## Per-Target Results\n".to_owned());
-    lines.push("| URL | Secrets | Vulns | Status |".to_owned());
-    lines.push("|-----|---------|-------|--------|".to_owned());
-
-    for outcome in outcomes {
-        let status = match &outcome.status {
-            ScanStatus::Success => "OK".to_owned(),
-            ScanStatus::Failed(msg) => {
-                let truncated: String = msg.chars().take(60).collect();
-                format!("FAIL: {truncated}")
-            }
-        };
-        lines.push(format!(
-            "| {} | {} | {} | {} |",
-            outcome.url, outcome.secrets, outcome.vulns, status
-        ));
-    }
-
-    lines.push(String::new());
-
-    let summary_path = output_dir.join("SUMMARY.md");
-    fs::write(summary_path, lines.join("\n"))?;
-
-    Ok(())
 }
 
 // Why: One target scan assembles observations from all collectors into a single result.

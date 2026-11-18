@@ -7,6 +7,7 @@ mod cve_detection;
 mod manifest_intel;
 mod patterns;
 mod regression_guard;
+mod reporting;
 mod sourcemap_intel;
 mod taint_fixtures;
 mod taint_gadgets;

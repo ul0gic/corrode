@@ -2,4 +2,4 @@
 // Holds: Endpoint discovery operates on supplied source text.
 
 /// JavaScript endpoint discovery.
-pub mod discovery;
+pub use crate::detectors::endpoints as discovery;
