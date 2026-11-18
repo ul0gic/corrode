@@ -1,3 +1,6 @@
+// Does:  Renders findings and assessment evidence.
+// Holds: Finding severity and confidence determine display order.
+
 use std::cmp::Reverse;
 
 use crate::types::{
@@ -11,7 +14,6 @@ use super::summary::{
     truncate_middle,
 };
 
-/// Unified finding for sorting across secrets and vulnerabilities.
 struct Finding {
     severity: String,
     title: String,
@@ -25,7 +27,6 @@ struct Finding {
     evidence_basis: Option<String>,
 }
 
-/// Top factor note from a confidence breakdown, for the rendered "why" line.
 fn confidence_why(confidence: Option<&Confidence>) -> Option<String> {
     let c = confidence?;
     let note = c.factors.iter().find(|f| !f.note.is_empty())?;
@@ -66,10 +67,8 @@ fn render_assessments(
         return report;
     }
 
-    // Collect all findings into a flat list with severity
     let mut findings: Vec<Finding> = Vec::new();
 
-    // Secrets -> findings
     for (pattern_name, secret_findings) in &result.secrets {
         let severity = secret_severity(pattern_name).to_owned();
         for sf in secret_findings {
@@ -110,7 +109,6 @@ fn render_assessments(
 
     report.push(format!("---\n## {title}\n"));
 
-    // Sort by severity (critical first), then by confidence within each band.
     findings.sort_by_key(|f| {
         (
             Reverse(severity_rank(&f.severity)),
@@ -118,7 +116,6 @@ fn render_assessments(
         )
     });
 
-    // Render by severity section
     for sev in &["CRITICAL", "HIGH", "MEDIUM", "LOW", "INFO"] {
         let section_findings: Vec<&Finding> =
             findings.iter().filter(|f| f.severity == *sev).collect();
@@ -404,7 +401,6 @@ fn severity_icon(severity: &str) -> &'static str {
     }
 }
 
-/// Format a list of secret match values for display.
 fn format_secret_values(matches: &[String]) -> String {
     if matches.is_empty() {
         return String::new();
@@ -421,7 +417,6 @@ fn format_secret_values(matches: &[String]) -> String {
     }
 }
 
-/// Convert a pattern name like `aws_secret` to a readable title like `AWS Secret`.
 fn format_pattern_title(pattern_name: &str) -> String {
     pattern_name
         .split('_')
@@ -439,7 +434,6 @@ fn format_pattern_title(pattern_name: &str) -> String {
         .join(" ")
 }
 
-/// Generate context description for why a secret finding matters.
 fn secret_context(pattern_name: &str) -> String {
     match pattern_name {
         "supabase_service_role" => "Service role key grants full database access bypassing RLS. An attacker can read, write, and delete all data.".to_owned(),
@@ -461,7 +455,6 @@ fn secret_context(pattern_name: &str) -> String {
     }
 }
 
-/// Generate remediation advice for a secret pattern.
 fn secret_remediation(pattern_name: &str) -> String {
     match pattern_name {
         "supabase_service_role" | "supabase_secret" => "Rotate the key immediately in the Supabase dashboard. Use server-side code for service role operations.".to_owned(),

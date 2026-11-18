@@ -1,3 +1,6 @@
+// Does:  Locates a Chrome or Chromium executable.
+// Holds: An explicit missing override fails without searching fallback locations.
+
 use anyhow::{bail, Result};
 use std::env;
 use std::path::PathBuf;

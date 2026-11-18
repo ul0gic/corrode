@@ -6,7 +6,7 @@ and evidence-backed security findings.
 [![CI](https://github.com/ul0gic/corrode/actions/workflows/ci.yml/badge.svg)](https://github.com/ul0gic/corrode/actions/workflows/ci.yml)
 [![crates.io](https://img.shields.io/crates/v/corrode-scanner.svg)](https://crates.io/crates/corrode-scanner)
 [![Downloads](https://img.shields.io/crates/d/corrode-scanner.svg)](https://crates.io/crates/corrode-scanner)
-[![Rust](https://img.shields.io/badge/rust-1.97.1-orange.svg)](https://www.rust-lang.org/)
+[![Rust](https://img.shields.io/badge/rust-1.100.0-orange.svg)](https://www.rust-lang.org/)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](#license-and-contributing)
 
 Corrode loads a target in headless Chrome and analyzes what the browser can see:
@@ -22,8 +22,8 @@ while preserving complete evidence for deeper review.
   taint flows, gadgets, prototype-pollution surfaces, and `postMessage` handlers.
 - Classifies browser-visible access tokens, refresh tokens, sessions, and JWT
   claims without validating or replaying credentials.
-- Correlates directly observed React, Next.js, and WordPress versions with
-  supported security advisories.
+- Checks high-impact advisories against WordPress generator evidence or an
+  owner-supplied record of the running deployment.
 - Separates actionable findings, manual-validation leads, and neutral inventory.
 - Scores confidence independently from severity and records evidence provenance.
 - Supports single targets, sequential batch scans, custom patterns, and
@@ -67,7 +67,7 @@ Prebuilt Linux and macOS binaries are available on the
 | Requirement | Notes |
 |-------------|-------|
 | Chrome or Chromium | Required at runtime; auto-detected from `PATH` and common install locations |
-| Rust 1.97.1 | Required when installing with Cargo or building from source |
+| Rust 1.97.1 or newer | Minimum for Cargo installs and source builds. The repository and CI use Rust 1.100.0. |
 | CMake | Build-time dependency for the Rust TLS backend; unnecessary for prebuilt binaries |
 | Operating system | Linux or macOS |
 
@@ -114,7 +114,7 @@ corrode-output/
 - `EVIDENCE.md` contains exhaustive passive observations, including network,
   DOM, AST, source-map, route, and static-analysis details.
 - `scan_result.json` is emitted with `--format json` or `--format both` and uses
-  schema version `0.5`.
+  schema version `0.6`.
 - `SUMMARY.md` is added at the output root for multi-target scans.
 
 Markdown redacts credential values. JSON retains complete evidence and should be
@@ -129,12 +129,44 @@ handled as sensitive assessment data.
 | Client-side attack surface | API endpoints, routes, manifests, source maps, DOM taint flows, gadgets, prototype-pollution heuristics, `postMessage` origin checks |
 | Security posture | Cookie flags, CORS, CSP and other security headers, mixed content, debug builds, exposed source maps |
 | Technology inventory | Frontend frameworks, servers, authentication, payments, analytics, CMS, API documentation, state management, cloud, and monitoring services |
-| Advisory correlation | React Server Components, Next.js, and WordPress advisories when sufficient passive version evidence is available |
+| Advisory correlation | WordPress core RCE chain from a site generator version; React2Shell, PHP2Shell, upstream NGINX HTTP/2 and Vite development-server advisories from owner-supplied deployment evidence |
 
-Advisory matching includes the supported React RSC CVE cluster, Next.js
-middleware/SSRF/cache/auth/DoS advisories, and the July 2026 WordPress SQLi and
-RCE-chain ranges. Unknown or weakly inferred versions remain validation leads or
-inventory and do not raise headline risk.
+### Checking deployed software
+
+The same URL scan works against localhost and a remote site. Product names,
+client bundles and HTTP banners contribute to inventory. For server-side
+advisories, supply the **actual running upstream release and configuration**
+from the deployment you own. Use an exact page URL in the configuration file:
+
+```toml
+[deployments."https://app.example.org/".react]
+package = "react-server-dom-webpack"
+unmodified_upstream_version = "19.1.1"
+serves_server_components = true
+```
+
+Run `corrode-scanner --url https://app.example.org/ --config deployment.toml`. For a
+local service, use its localhost URL (including the port) in both places.
+Records are matched to the requested and final document URLs, including paths
+and query strings. A redirect to another URL skips the supplied record.
+Each product table is optional. Omit any component whose build provenance is
+unknown. For distributions, patched forks, NGINX Plus, or vendor backports,
+consult the supplier's package advisory.
+
+Each supported advisory has a row in the report and an entry in JSON
+`advisory_checks`. A `matched` result means the owner record or site generator
+metadata met the published criteria. Confirm the running package, patch history,
+and relevant settings on the deployment. Corrode does not test host exploitability.
+A `no_match` applies only to that rule and the evidence compared.
+A `not_assessed` result explains which evidence was missing or unsuitable.
+Reports from before schema 0.6 have no recorded per-rule coverage.
+
+| Deployment table | Evidence in addition to `unmodified_upstream_version` | Advisory |
+|---|---|---|
+| `react` | Installed RSC server `package` and `serves_server_components` | [React2Shell](https://react.dev/blog/2025/12/03/critical-security-vulnerability-in-react-server-components) |
+| `php` | `serves_web_requests` for the installed PHP 8.2–8.5 runtime | [PHP October security releases](https://www.php.net/archive/2026.php) |
+| `nginx_open_source` | `serves_http2` on this service. The second check also requires `proxies_to_backend` and `low_worker_connections_observed` | [HTTP/2 flow control](https://my.f5.com/manage/s/article/K000163926), [HTTP/2 proxy worker](https://my.f5.com/manage/s/article/K000163928) |
+| `vite` | `dev_server_exposed_to_network` for an explicitly exposed Vite development server | [Vite virtual-module advisory](https://github.com/vitejs/vite/security/advisories/GHSA-p4f5-76q4-ffq7) |
 
 ## Command-Line Options
 
@@ -186,7 +218,7 @@ reference.
 Severity describes potential impact. Confidence describes how strongly the
 captured evidence supports the assessment. A high-severity, low-confidence lead
 should be validated before escalation; an actionable finding has direct evidence
-and contributes to the headline risk rating.
+and contributes to the highest finding severity. Advisory matches are reported separately.
 
 Corrode is reconnaissance, not proof of exploitability. Browser state varies
 with authentication, user interaction, feature flags, geography, and timing, so

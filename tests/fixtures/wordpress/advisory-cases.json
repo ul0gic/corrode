@@ -1,0 +1,14 @@
+[
+  { "version": "6.8.0", "expected_severity": null },
+  { "version": "6.8.5", "expected_severity": null },
+  { "version": "6.8.6", "expected_severity": null },
+  { "version": "6.9.0", "expected_severity": "critical" },
+  { "version": "6.9.4", "expected_severity": "critical" },
+  { "version": "6.9.5", "expected_severity": null },
+  { "version": "7.0.0", "expected_severity": "critical" },
+  { "version": "7.0.1", "expected_severity": "critical" },
+  { "version": "7.0.2", "expected_severity": null },
+  { "version": "7.1.0", "expected_severity": null },
+  { "version": "7.0.1-alpha", "expected_severity": null },
+  { "version": "latest", "expected_severity": null }
+]

@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Prototype-Pollution Surface Fixture - Corrode QA</title>
+    <!--
+        Merge/deep-set helpers and __proto__/constructor/prototype writes fed
+        from URL-derived, path-shaped payloads. Surface only, never an exploit.
+    -->
+</head>
+<body>
+    <!-- POSITIVE 1: deep merge of a tainted query object -->
+    <script>
+        function loadConfig() {
+            const params = new URLSearchParams(location.search);
+            const incoming = JSON.parse(params.get("config"));
+            const target = {};
+            deepMerge(target, incoming);
+        }
+    </script>
+
+    <!-- POSITIVE 2: direct __proto__ assignment from a tainted computed key -->
+    <script>
+        function setOption(obj) {
+            const key = new URLSearchParams(location.search).get("key");
+            obj[key] = location.hash.slice(1);
+        }
+    </script>
+
+    <!-- POSITIVE 3: hand-rolled deep-set walking a path from the hash -->
+    <script>
+        function applyHashPath(root) {
+            const path = location.hash.slice(1).split(".");
+            let node = root;
+            for (let i = 0; i < path.length - 1; i++) {
+                node = node[path[i]] = node[path[i]] || {};
+            }
+            node[path[path.length - 1]] = true;
+        }
+    </script>
+
+    <!-- POSITIVE 4: lodash-style merge helper from URL params -->
+    <script>
+        function hydrate(state) {
+            const q = Object.fromEntries(new URLSearchParams(location.search));
+            return merge(state, q);
+        }
+    </script>
+
+    <!-- NEGATIVE: merge of two constant objects (no tainted source) -->
+    <script>
+        function defaults() {
+            return merge({ a: 1 }, { b: 2 });
+        }
+    </script>
+</body>
+</html>

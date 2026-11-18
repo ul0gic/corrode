@@ -1,0 +1,4 @@
+# Approved example pages
+https://example.test/first
+
+  http://example.test/second?view=public

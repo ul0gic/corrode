@@ -1,23 +1,36 @@
-//! Passive: GET only `.map` URLs the page already referenced, confined to the
-//! target origin — no guessing, no off-origin follows.
+// Does:  Resolves source-map references, checks their scope, and retrieves accepted maps.
+// Holds: Classification completes without network access and rejects exhausted fetch budgets.
 
 use tokio::time::{self, Duration};
 use url::Url;
 
+/// Maximum number of distinct map fetch attempts per analysis.
 pub const MAX_MAPS: usize = 50;
+/// Largest accepted source-map body in bytes.
 pub const MAX_MAP_BYTES: u64 = 25 * 1024 * 1024;
 const FETCH_TIMEOUT: Duration = Duration::from_secs(10);
 
+/// Reason a reference was rejected or its body discarded.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SkipReason {
+    /// Inline data reference rejected before URL resolution.
     NonHttp,
+    /// Resolved host outside the permitted host relationship.
     OffOrigin,
+    /// Invalid base, unresolved reference, or unsupported URL scheme.
     Unresolvable,
+    /// Map-attempt budget already exhausted.
     CountCapped,
+    /// Declared length or decoded body exceeds the byte limit.
     TooLarge,
 }
 
-/// `None` for unparseable refs and non-http(s) schemes (e.g. `data:` maps).
+/// Resolves a reference against the referring document or script and accepts HTTP and HTTPS.
+/// ```
+/// # use corrode_scanner::detectors::sourcemaps::retrieve::*;
+/// let url = resolve_map_url("https://example.test/js/bundle.js", "bundle.js.map").unwrap();
+/// # assert_eq!(url.path(), "/js/bundle.js.map");
+/// ```
 pub fn resolve_map_url(referrer: &str, map_ref: &str) -> Option<Url> {
     let base = Url::parse(referrer).ok()?;
     let resolved = base.join(map_ref).ok()?;
@@ -27,8 +40,12 @@ pub fn resolve_map_url(referrer: &str, map_ref: &str) -> Option<Url> {
     }
 }
 
-/// In-scope = exact host, a subdomain of the target, or the target a subdomain
-/// of the host. Open when no target host is known (matches `collectors`).
+/// Accepts matching hosts, their ancestors or subdomains, and any URL when the target is unknown.
+/// ```
+/// # use corrode_scanner::detectors::sourcemaps::retrieve::*;
+/// # let asset = "https://cdn.example.test/main.js.map".parse().unwrap();
+/// assert!(is_in_scope(&asset, Some("example.test")));
+/// ```
 pub fn is_in_scope(url: &Url, target_host: Option<&str>) -> bool {
     let Some(target) = target_host else {
         return true;
@@ -45,7 +62,11 @@ pub fn is_in_scope(url: &Url, target_host: Option<&str>) -> bool {
             .ends_with(&format!(".{}", host.to_ascii_lowercase()))
 }
 
-/// Decide whether to fetch, before any network call.
+/// Checks the remaining fetch budget, resolves the reference, and checks its host before retrieval.
+/// ```
+/// # use corrode_scanner::detectors::sourcemaps::retrieve::*;
+/// assert_eq!(classify("https://example.test", "x.map", None, MAX_MAPS), Err(SkipReason::CountCapped));
+/// ```
 pub fn classify(
     referrer: &str,
     map_ref: &str,
@@ -55,7 +76,7 @@ pub fn classify(
     if already_fetched >= MAX_MAPS {
         return Err(SkipReason::CountCapped);
     }
-    // Distinguish data: from Unresolvable for a clearer log.
+    // Why: Inline data references have a separate skip reason in the fetch log.
     if map_ref.trim_start().starts_with("data:") {
         return Err(SkipReason::NonHttp);
     }
@@ -66,8 +87,13 @@ pub fn classify(
     Ok(url)
 }
 
-/// `Ok(None)` on any network/timeout/body error so one bad map never aborts
-/// the scan; `Err(TooLarge)` when it exceeds the size cap.
+/// Fetches a previously classified URL. Discards oversized bodies and maps transport errors to `Ok(None)`.
+/// ```
+/// # use corrode_scanner::detectors::sourcemaps::retrieve::*;
+/// # let runtime = tokio::runtime::Runtime::new().unwrap();
+/// # let unsupported = "data:,".parse().unwrap();
+/// assert_eq!(runtime.block_on(fetch_map(&unsupported)), Ok(None));
+/// ```
 pub async fn fetch_map(url: &Url) -> Result<Option<String>, SkipReason> {
     let Ok(Ok(resp)) = time::timeout(FETCH_TIMEOUT, reqwest::get(url.clone())).await else {
         return Ok(None);

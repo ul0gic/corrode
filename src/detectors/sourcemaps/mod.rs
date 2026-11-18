@@ -1,21 +1,37 @@
+// Does:  Collects route, package, and embedded-source evidence from referenced maps.
+// Holds: Each resolved map URL gets at most one fetch attempt per analysis.
+
+/// Route and package-version inference from recovered paths.
 pub mod intel;
+/// Decoding of source paths and optional embedded text.
 pub mod parse;
+/// Reference resolution, scope checks, and HTTP retrieval.
 pub mod retrieve;
 
 use crate::types::{RouteSurface, SourceMapIntel, TechnologyVersion};
 
+/// Evidence recovered from the candidate maps of one scan.
 #[derive(Debug, Default)]
 pub struct SourceMapReport {
+    /// Successfully decoded maps and their referring scripts.
     pub intel: Vec<SourceMapIntel>,
+    /// Route candidates inferred from file paths.
     pub routes: Vec<RouteSurface>,
+    /// Distinct package names and versions found in dependency paths.
     pub versions: Vec<TechnologyVersion>,
     /// First-party `(path, text)` for the caller to run through the `SecretScanner`.
     pub recovered_sources: Vec<(String, String)>,
+    /// Retrieval and parsing outcomes in candidate order.
     pub fetch_log: Vec<String>,
 }
 
-/// `candidates` are `(referrer_url, map_ref)` pairs from the page's
-/// `sourceMappingURL` references. A single bad map is logged and skipped.
+/// Analyzes observed (referrer, reference) pairs, skipping individual fetch or parse failures.
+/// ```
+/// # use corrode_scanner::detectors::sourcemaps::analyze;
+/// # let candidates = [("https://example.test/app.js".into(), "data:,".into())];
+/// let report = futures::executor::block_on(analyze(&candidates, Some("example.test")));
+/// # assert!(report.fetch_log[0].contains("NonHttp"));
+/// ```
 pub async fn analyze(
     candidates: &[(String, String)],
     target_host: Option<&str>,
@@ -36,7 +52,7 @@ pub async fn analyze(
 
         let url_str = url.to_string();
         if !fetched_urls.insert(url_str.clone()) {
-            continue; // already fetched this exact map
+            continue;
         }
 
         let body = match retrieve::fetch_map(&url).await {
@@ -93,7 +109,7 @@ pub async fn analyze(
         });
     }
 
-    // Cross-map version dups aren't adjacent, so filter against a seen-set.
+    // Why: Different maps can reference the same package version in any order.
     let mut seen_versions = std::collections::HashSet::new();
     report
         .versions

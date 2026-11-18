@@ -1,3 +1,6 @@
+// Does:  Analyzes captured cookies, headers, and resources for security findings.
+// Holds: Header checks use the first matching HTML document response.
+
 use crate::types::{
     AssessmentDisposition, EvidenceSource, FindingEvidence, SecurityAnalysis, Vulnerability,
 };
@@ -12,7 +15,6 @@ pub(crate) fn analyze_security(
     let mut missing_headers = Vec::new();
     let mut mixed_content = Vec::new();
 
-    // Check cookies
     for cookie in cookies {
         if !cookie.secure || !cookie.http_only {
             insecure_cookies.push(cookie.name.clone());
@@ -26,13 +28,12 @@ pub(crate) fn analyze_security(
     let mut checked_headers = false;
 
     for call in calls {
-        // CORS: only flag first-party URLs where wildcard is a real misconfiguration.
-        // Third-party services (CDNs, analytics, consent tools) use ACAO:* by design.
         if let Some(acao) = call
             .response_headers
             .get("access-control-allow-origin")
             .or_else(|| call.response_headers.get("Access-Control-Allow-Origin"))
         {
+            // Why: Wildcard CORS on third-party and static resources is often intentional.
             if acao == "*"
                 && is_first_party(&call.url, target_host.as_deref())
                 && !is_static_or_framework_url(&call.url, call.response_content_type.as_ref())
@@ -41,12 +42,10 @@ pub(crate) fn analyze_security(
             }
         }
 
-        // Mixed content: HTTPS page loading HTTP resources
         if target_is_https && call.url.starts_with("http://") {
             mixed_content.push(call.url.clone());
         }
 
-        // Security headers: check once on the first matching HTML document response
         if !checked_headers
             && (call.url == target_url || call.url.starts_with(target_url))
             && check_security_headers(call, &mut missing_headers)
@@ -175,8 +174,6 @@ fn validation_lead(
     }
 }
 
-/// Check the main document response for missing security headers.
-/// Returns true if this was an HTML response (so caller can stop checking).
 fn check_security_headers(call: &crate::types::ApiCall, missing: &mut Vec<String>) -> bool {
     let Some(ct) = &call.response_content_type else {
         return false;
@@ -213,7 +210,6 @@ fn check_security_headers(call: &crate::types::ApiCall, missing: &mut Vec<String
     true
 }
 
-/// Returns true if the URL belongs to the same domain as the target.
 fn is_first_party(url: &str, target_host: Option<&str>) -> bool {
     let Some(target) = target_host else {
         return true;
@@ -227,38 +223,32 @@ fn is_first_party(url: &str, target_host: Option<&str>) -> bool {
     true
 }
 
-/// Returns true if the URL/content-type indicates a static asset or framework
-/// resource where `Access-Control-Allow-Origin: *` is expected and harmless.
 fn is_static_or_framework_url(url: &str, content_type: Option<&String>) -> bool {
     let lower = url.to_lowercase();
 
-    // Static file extensions
     let static_extensions = [
         ".js", ".css", ".png", ".jpg", ".jpeg", ".gif", ".svg", ".ico", ".woff", ".woff2", ".ttf",
         ".eot", ".map", ".webp", ".avif", ".mp4", ".webm", ".mp3", ".ogg", ".wav",
     ];
-    // Check path portion (strip query string)
     let path = lower.split('?').next().unwrap_or(&lower);
     if static_extensions.iter().any(|ext| path.ends_with(ext)) {
         return true;
     }
 
-    // Framework/platform internals
     let framework_patterns = [
-        "/_next/",   // Next.js assets
-        "/_nuxt/",   // Nuxt.js assets
-        "/_vercel/", // Vercel analytics/internals
-        "/_gatsby/", // Gatsby internals
-        "/cdn-cgi/", // Cloudflare internals
-        "?_rsc=",    // Next.js RSC payloads
-        "&_rsc=",    // Next.js RSC payloads
-        "/favicon",  // Favicons
+        "/_next/",
+        "/_nuxt/",
+        "/_vercel/",
+        "/_gatsby/",
+        "/cdn-cgi/",
+        "?_rsc=",
+        "&_rsc=",
+        "/favicon",
     ];
     if framework_patterns.iter().any(|p| lower.contains(p)) {
         return true;
     }
 
-    // Third-party CDN domains where CORS * is standard
     let cdn_domains = [
         "cdn.jsdelivr.net",
         "unpkg.com",
@@ -274,7 +264,6 @@ fn is_static_or_framework_url(url: &str, content_type: Option<&String>) -> bool 
         return true;
     }
 
-    // Content-type check: font and image MIME types are always safe
     if let Some(ct) = content_type {
         let ct_lower = ct.to_lowercase();
         if ct_lower.starts_with("font/")

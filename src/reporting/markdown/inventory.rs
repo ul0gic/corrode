@@ -1,3 +1,6 @@
+// Does:  Renders observed surface inventory.
+// Holds: Endpoint and route lists have display limits.
+
 use std::collections::BTreeSet;
 
 use crate::types::{AssessmentDisposition, ScanResult};

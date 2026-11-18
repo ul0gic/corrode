@@ -1,3 +1,6 @@
+// Does:  Extracts Remix route templates from a manifest.
+// Holds: Parent traversal stops after 64 entries.
+
 use serde_json::Value;
 
 use super::routes::RouteSet;
@@ -9,8 +12,6 @@ pub struct RemixResult {
     pub routes: RouteSet,
 }
 
-/// `manifest` is the JSON string of `__remixManifest` (or the `.manifest` field
-/// of `__remixContext`). Unparseable input yields an empty result.
 pub fn parse(manifest: Option<&str>) -> RemixResult {
     let mut out = RemixResult::default();
     let Some(raw) = manifest else {
@@ -20,7 +21,6 @@ pub fn parse(manifest: Option<&str>) -> RemixResult {
         return out;
     };
 
-    // Accept either the manifest directly or a wrapper exposing `.manifest`.
     let manifest = value.get("manifest").unwrap_or(&value);
     let Some(routes) = manifest.get("routes").and_then(Value::as_object) else {
         return out;
@@ -37,7 +37,7 @@ pub fn parse(manifest: Option<&str>) -> RemixResult {
             continue;
         };
         if path.is_empty() {
-            continue; // pathless layout / root
+            continue;
         }
         let entry = &routes[id];
         let has_action = entry.get("hasAction").and_then(Value::as_bool) == Some(true);
@@ -60,8 +60,6 @@ pub fn parse(manifest: Option<&str>) -> RemixResult {
     out
 }
 
-/// Walk `parentId` to the root, joining each segment's `path` and normalizing
-/// Remix dynamic markers. Returns `None` if the chain is malformed.
 fn full_path(id: &str, routes: &serde_json::Map<String, Value>) -> Option<String> {
     let mut segments = Vec::new();
     let mut current = Some(id.to_owned());
@@ -70,7 +68,7 @@ fn full_path(id: &str, routes: &serde_json::Map<String, Value>) -> Option<String
     while let Some(cur) = current {
         guard += 1;
         if guard > 64 {
-            return None; // cycle guard
+            return None;
         }
         let entry = routes.get(&cur)?;
         if let Some(seg) = entry.get("path").and_then(Value::as_str) {
@@ -88,8 +86,6 @@ fn full_path(id: &str, routes: &serde_json::Map<String, Value>) -> Option<String
     Some(format!("/{}", segments.join("/")).replace("//", "/"))
 }
 
-/// Remix path segments already use `:param`; normalize a bare `$`/`$param`
-/// (older filename-derived forms) and splats to the canonical template form.
 fn normalize_segment(seg: &str) -> String {
     seg.split('/')
         .map(|part| {

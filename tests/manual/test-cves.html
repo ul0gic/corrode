@@ -1,0 +1,17 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <title>Client-only advisory look-alike</title>
+</head>
+<body>
+    <h1>Client-only advisory look-alike</h1>
+    <p>This static page advertises React and Next.js. A browser-only scan should
+    identify framework signals and emit zero server CVE findings.</p>
+    <script>
+        window.__NEXT_DATA__ = {buildId: "fixture", page: "/"};
+        window.__next_f = [];
+        window.__next_f.push([1, "react-server-dom-webpack@19.0.0/client"]);
+    </script>
+</body>
+</html>

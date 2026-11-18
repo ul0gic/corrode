@@ -1,3 +1,6 @@
+// Does:  Combines the built-in secret detection patterns.
+// Holds: Patterns are keyed by name in the resulting map.
+
 mod ai;
 mod auth;
 mod cloud;
@@ -12,8 +15,9 @@ mod vcs;
 use regex::Regex;
 use std::collections::HashMap;
 
-/// Aggregates all secret detection patterns from every category module
-/// into a single `HashMap` keyed by pattern name.
+/// Collects built-in patterns keyed by name.
+///
+///     assert!(!corrode_scanner::detectors::secrets::patterns::all_patterns().is_empty());
 pub fn all_patterns() -> HashMap<&'static str, Regex> {
     let mut m = HashMap::new();
     for (name, regex) in cloud::patterns() {

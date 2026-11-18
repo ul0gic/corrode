@@ -1,3 +1,6 @@
+// Does:  Runs browser scans and writes per-target and batch reports.
+// Holds: Each target is scanned in order with the same browser instance.
+
 use anyhow::{Context, Result};
 use chrono::Utc;
 use colored::Colorize;
@@ -9,7 +12,6 @@ use std::time::{Duration, Instant};
 use tokio::time;
 
 use crate::config::{Config, OutputFormat};
-use crate::detectors::vulnerabilities::rsc;
 use crate::detectors::{
     collectors::{
         dom::{self, DomArtifacts},
@@ -21,28 +23,24 @@ use crate::detectors::{
     session, sourcemaps, taint, technologies, vulnerabilities,
 };
 use crate::network::monitor::NetworkMonitor;
-use crate::reporting::{json as json_report, markdown};
+use crate::reporting::{json as json_report, markdown, ScanOutcome, ScanStatus};
 use crate::scanner::chrome::resolve_chrome_binary;
 use crate::scanner::page_utils;
 use crate::types::{DomAnalysis, JavaScriptAnalysis, NetworkAnalysis, ScanResult};
 use chromiumoxide::browser::{Browser, BrowserConfig};
 
-/// Tracks per-URL scan outcomes for the batch summary.
-struct ScanOutcome {
-    url: String,
-    secrets: usize,
-    vulns: usize,
-    status: ScanStatus,
-}
-
-enum ScanStatus {
-    Success,
-    Failed(String),
-}
-
+/// Runs configured scans and writes reports; exits with status 1 if any target fails.
+///
+/// ```no_run
+/// # use corrode_scanner::{config::Config, scanner::workflow};
+/// # async fn scan(config: Config) -> anyhow::Result<()> {
+/// workflow::run(config).await?;
+/// # Ok(())
+/// # }
+/// ```
+// Why: Batch setup, scan results, and summary output share the orchestration state.
 #[allow(clippy::too_many_lines)]
 pub async fn run(config: Config) -> Result<()> {
-    // Build the list of URLs to scan
     let urls = resolve_urls(&config)?;
     let total = urls.len();
     let is_batch = total > 1;
@@ -63,7 +61,6 @@ pub async fn run(config: Config) -> Result<()> {
         );
     }
 
-    // Build Chrome args: built-in defaults + config file args
     let mut chrome_args: Vec<&str> = vec![
         "--no-sandbox",
         "--disable-setuid-sandbox",
@@ -77,7 +74,6 @@ pub async fn run(config: Config) -> Result<()> {
         "--disable-sync",
     ];
 
-    // Collect owned strings from config to extend lifetime
     let extra_args = config.chrome_args.clone();
     for arg in &extra_args {
         chrome_args.push(arg.as_str());
@@ -139,7 +135,11 @@ pub async fn run(config: Config) -> Result<()> {
         {
             Ok(result) => {
                 let secrets_count: usize = result.secrets.values().map(std::vec::Vec::len).sum();
-                let vulns_count = result.vulnerabilities.len();
+                let vulns_count = result
+                    .vulnerabilities
+                    .iter()
+                    .filter(|v| v.disposition == crate::types::AssessmentDisposition::Finding)
+                    .count();
                 let comments_count = result.comments.len();
                 total_secrets += secrets_count;
                 total_vulns += vulns_count;
@@ -161,7 +161,7 @@ pub async fn run(config: Config) -> Result<()> {
 
                 if secrets_count > 0 || vulns_count > 0 {
                     println!(
-                        "{} {} - {} secrets, {} vulns, {} comments",
+                        "{} {} - {} secrets, {} vulnerability findings, {} comments",
                         "[!]".red().bold(),
                         result.url.yellow(),
                         secrets_count.to_string().red().bold(),
@@ -188,10 +188,14 @@ pub async fn run(config: Config) -> Result<()> {
                     }
                 }
 
+                let advisory_summary = crate::reporting::advisory_summary(&result.advisory_checks);
+                println!("    Advisory comparisons for {url}: {advisory_summary}. Host exploitability unverified.");
+
                 outcomes.push(ScanOutcome {
                     url: url.clone(),
                     secrets: secrets_count,
                     vulns: vulns_count,
+                    advisory_summary,
                     status: ScanStatus::Success,
                 });
 
@@ -204,13 +208,13 @@ pub async fn run(config: Config) -> Result<()> {
                     url: url.clone(),
                     secrets: 0,
                     vulns: 0,
+                    advisory_summary: "Scan failed".to_owned(),
                     status: ScanStatus::Failed(format!("{e}")),
                 });
             }
         }
     }
 
-    // Print summary
     println!("\n{}", "=".repeat(60).dimmed());
 
     if is_batch {
@@ -222,11 +226,10 @@ pub async fn run(config: Config) -> Result<()> {
         );
         println!();
 
-        // Per-target summary table
         let header_status = "Status";
         println!(
             "  {:<50} {:<10} {:<10} {}",
-            "URL", "Secrets", "Vulns", header_status
+            "URL", "Secrets", "Vuln finds", header_status
         );
         println!("  {}", "-".repeat(80));
         for outcome in &outcomes {
@@ -261,7 +264,7 @@ pub async fn run(config: Config) -> Result<()> {
         total_secrets.to_string().red().bold()
     );
     println!(
-        "{} Total vulnerabilities: {}",
+        "{} Total vulnerability findings (excludes advisory matches): {}",
         "[!]".yellow().bold(),
         total_vulns.to_string().yellow().bold()
     );
@@ -277,20 +280,17 @@ pub async fn run(config: Config) -> Result<()> {
     );
     println!("{}", "=".repeat(60).dimmed());
 
-    // Write batch summary if multi-URL
     if is_batch && matches!(output_format, OutputFormat::Md | OutputFormat::Both) {
-        write_batch_summary(output_root.as_ref(), &outcomes, total_secrets, total_vulns)?;
+        markdown::batch::write(output_root.as_ref(), &outcomes, total_secrets, total_vulns)?;
     }
 
     if any_failed {
-        // Exit code 1 if any scan failed
         std::process::exit(1);
     }
 
     Ok(())
 }
 
-/// Resolve the list of URLs from either `--url` or `--file`.
 fn resolve_urls(config: &Config) -> Result<Vec<String>> {
     if !config.urls.is_empty() {
         return Ok(config.urls.clone());
@@ -301,56 +301,7 @@ fn resolve_urls(config: &Config) -> Result<Vec<String>> {
     anyhow::bail!("No URLs to scan. Provide --url or --file.");
 }
 
-/// Write a `SUMMARY.md` batch summary to the output root.
-fn write_batch_summary(
-    output_dir: &Path,
-    outcomes: &[ScanOutcome],
-    total_secrets: usize,
-    total_vulns: usize,
-) -> Result<()> {
-    let mut lines = Vec::new();
-    lines.push("# Corrode Batch Scan Summary\n".to_owned());
-    lines.push(format!("**Scan Date**: {}", Utc::now().to_rfc3339()));
-    lines.push(format!("**Targets Scanned**: {}", outcomes.len()));
-
-    let succeeded = outcomes
-        .iter()
-        .filter(|o| matches!(o.status, ScanStatus::Success))
-        .count();
-    let failed = outcomes.len() - succeeded;
-
-    lines.push(format!("**Succeeded**: {succeeded}"));
-    lines.push(format!("**Failed**: {failed}"));
-    lines.push(format!("**Total Secrets**: {total_secrets}"));
-    lines.push(format!("**Total Vulnerabilities**: {total_vulns}\n"));
-
-    lines.push("---\n".to_owned());
-    lines.push("## Per-Target Results\n".to_owned());
-    lines.push("| URL | Secrets | Vulns | Status |".to_owned());
-    lines.push("|-----|---------|-------|--------|".to_owned());
-
-    for outcome in outcomes {
-        let status = match &outcome.status {
-            ScanStatus::Success => "OK".to_owned(),
-            ScanStatus::Failed(msg) => {
-                let truncated: String = msg.chars().take(60).collect();
-                format!("FAIL: {truncated}")
-            }
-        };
-        lines.push(format!(
-            "| {} | {} | {} | {} |",
-            outcome.url, outcome.secrets, outcome.vulns, status
-        ));
-    }
-
-    lines.push(String::new());
-
-    let summary_path = output_dir.join("SUMMARY.md");
-    fs::write(summary_path, lines.join("\n"))?;
-
-    Ok(())
-}
-
+// Why: One target scan assembles observations from all collectors into a single result.
 #[allow(clippy::too_many_lines, clippy::too_many_arguments)]
 async fn scan_url(
     url: String,
@@ -367,7 +318,6 @@ async fn scan_url(
         println!("{} {}", "[*]".cyan(), format!("Scanning {url}").dimmed());
     }
 
-    // Build scanner: use custom patterns + ignore list from config
     let scanner = if config.custom_patterns.is_empty() && config.ignore_patterns.is_empty() {
         SecretScanner::new()
     } else {
@@ -441,8 +391,6 @@ async fn scan_url(
         ast_findings,
     } = script_data;
 
-    // Recover referenced source maps, then scan recovered first-party source;
-    // best-effort: `analyze` logs and skips any bad/off-origin/oversized map.
     let source_map_report =
         sourcemaps::analyze(&source_map_candidates, target_host.as_deref()).await;
     for (path, content) in &source_map_report.recovered_sources {
@@ -457,6 +405,7 @@ async fn scan_url(
     }
 
     let elapsed = start.elapsed();
+    // Why: Recovered first-party sources contribute to the same findings snapshot as page scripts.
     let secrets = scanner.get_findings().await;
     let comments = scanner.get_comments().await;
     let secret_count: usize = secrets.values().map(std::vec::Vec::len).sum();
@@ -466,8 +415,7 @@ async fn scan_url(
     source_maps.extend(header_source_maps);
     let api_calls_list = network_monitor.get_api_calls().await;
 
-    // Technology detection — all sources, one module
-    let tech = technologies::detect_all(&page, &all_calls, &meta_tags, &scripts_array).await;
+    let mut tech = technologies::detect_all(&page, &all_calls, &meta_tags, &scripts_array).await;
 
     let api_call_urls: Vec<String> = api_calls_list.iter().map(|c| c.url.clone()).collect();
     let third_party: Vec<String> = all_calls
@@ -488,28 +436,31 @@ async fn scan_url(
         );
     }
 
-    let (mut all_vulns, security) = analyze_security(&raw_cookies, &all_calls, &url);
+    let (all_vulns, security) = analyze_security(&raw_cookies, &all_calls, &url);
 
-    // `rsc::detect` is the sole owner of RSC vuln emission; we still de-dupe on
-    // (`vuln_type`, url) to guard against a CVE arriving via another path.
     let script_refs: Vec<(&str, &str)> = script_bodies
         .iter()
         .map(|(text, src)| (text.as_str(), src.as_str()))
         .collect();
-    let rsc_vulns = rsc::detect(&script_refs, &window_objects);
-    let mut seen_vulns: std::collections::HashSet<(String, Option<String>)> = all_vulns
-        .iter()
-        .map(|v| (v.vuln_type.clone(), v.url.clone()))
-        .collect();
-    for vuln in rsc_vulns {
-        if seen_vulns.insert((vuln.vuln_type.clone(), vuln.url.clone())) {
-            all_vulns.push(vuln);
-        }
+    if technologies::rsc::fingerprint(&script_refs, &window_objects).is_present() {
+        tech.technologies.push("React Server Components".to_owned());
+        tech.technologies.sort();
+        tech.technologies.dedup();
     }
-    all_vulns.extend(vulnerabilities::check_all(&tech.versions));
+    let requested = url::Url::parse(&url).ok();
+    let document = page
+        .url()
+        .await
+        .ok()
+        .flatten()
+        .and_then(|s| url::Url::parse(&s).ok());
+    let advisory_checks = vulnerabilities::assess(
+        &config.deployments,
+        requested.as_ref(),
+        document.as_ref(),
+        &tech.versions,
+    );
 
-    // Extract framework manifests from in-page state (best-effort per parser);
-    // routes are appended to the source-map route surface, then deduped by (path, kind).
     let manifest_report = manifests::analyze(
         &window_objects,
         &tech.technologies,
@@ -518,14 +469,13 @@ async fn scan_url(
     );
     let framework_manifests = manifest_report.manifests;
 
+    // Why: A route present in both inputs keeps the source-map evidence that identified it.
     let mut route_surface = source_map_report.routes;
     route_surface.extend(manifest_report.routes);
     let mut seen_routes: std::collections::HashSet<(String, String)> =
         std::collections::HashSet::new();
     route_surface.retain(|r| seen_routes.insert((r.path.clone(), r.kind.clone())));
 
-    // Merge source-map-recovered versions into the technology surface, deduped
-    // by (name, version) so a version already detected at runtime isn't doubled.
     let mut technology_versions = tech.versions;
     let mut seen_versions: std::collections::HashSet<(String, Option<String>)> =
         technology_versions
@@ -538,8 +488,6 @@ async fn scan_url(
         }
     }
 
-    // Static, passive taint/gadget mapping (flows reported, never fired);
-    // CSP for bypass correlation comes from the document response, if present.
     let csp_header = all_calls
         .iter()
         .find(|c| c.url == url || c.url.starts_with(&url))
@@ -600,6 +548,7 @@ async fn scan_url(
         technologies: tech.technologies,
         technology_versions,
         vulnerabilities: all_vulns,
+        advisory_checks,
         storage_assessments,
         comments,
         api_tests: vec![],
@@ -613,8 +562,7 @@ async fn scan_url(
         error: None,
     };
 
-    // Phase 3 — score every finding's confidence (orthogonal to severity) now that
-    // the full result is assembled. Origin is judged against the scan target host.
+    // Why: Confidence can depend on observations from several collectors for the same finding.
     scoring::score_all(&mut result, target_host.as_deref());
 
     if matches!(output_format, OutputFormat::Md | OutputFormat::Both) {

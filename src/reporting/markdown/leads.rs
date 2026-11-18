@@ -1,3 +1,6 @@
+// Does:  Renders additional manual-validation leads.
+// Holds: Each lead category has a display limit.
+
 use crate::types::{ConfidenceLevel, ScanResult};
 
 use super::assessment::wordpress_lead;

@@ -1,15 +1,11 @@
-//! Browsers enforce the intersection of all delivered policies, so a relaxation
-//! is reported only when every applicable policy permits it.
+// Does:  Classifies script relaxations across delivered CSP policies.
+// Holds: A relaxation must be allowed by every policy that constrains scripts.
 
-/// Effective `script-src` per delivered policy; empty `policies` means no CSP
-/// constrained scripts at all.
 #[derive(Debug, Clone, Default)]
 pub(crate) struct Csp {
     policies: Vec<ScriptPolicy>,
 }
 
-/// `present` is false when neither `script-src` nor `default-src` appeared, so
-/// the policy places no limit on scripts and cannot bypass anything by itself.
 #[derive(Debug, Clone)]
 struct ScriptPolicy {
     present: bool,
@@ -17,8 +13,6 @@ struct ScriptPolicy {
 }
 
 impl Csp {
-    /// Duplicate directives resolve first-wins (browser behavior); empty input
-    /// and malformed tokens are tolerated and ignored.
     pub(crate) fn parse(header: &str) -> Csp {
         let policies = split_policies(header)
             .map(parse_policy)
@@ -27,19 +21,14 @@ impl Csp {
         Csp { policies }
     }
 
-    /// True when inline scripts execute under every policy: a nonce, hash, or
-    /// `'strict-dynamic'` neutralizes `'unsafe-inline'`, so those make it safe.
     pub(crate) fn allows_unsafe_inline_scripts(&self) -> bool {
         self.all_constraining_policies(policy_allows_unsafe_inline)
     }
 
-    /// True when `'unsafe-eval'` is permitted under every applicable policy.
     pub(crate) fn allows_unsafe_eval(&self) -> bool {
         self.all_constraining_policies(|p| has_keyword(&p.sources, "unsafe-eval"))
     }
 
-    /// True when a wildcard/bare scheme is allowed under every applicable policy,
-    /// or no policy constrains scripts at all.
     pub(crate) fn has_broad_script_src(&self) -> bool {
         if self.policies.iter().all(|p| !p.present) {
             return true;
@@ -47,9 +36,8 @@ impl Csp {
         self.all_constraining_policies(|p| sources_are_broad(&p.sources))
     }
 
-    /// A relaxation holds only if all constraining policies agree; a policy that
-    /// does not constrain scripts cannot tighten the others, so it is skipped.
     fn all_constraining_policies(&self, pred: impl Fn(&ScriptPolicy) -> bool) -> bool {
+        // Why: Policies without a script directive or fallback do not constrain script sources.
         let mut constraining = self.policies.iter().filter(|p| p.present).peekable();
         if constraining.peek().is_none() {
             return false;
@@ -58,8 +46,6 @@ impl Csp {
     }
 }
 
-/// A nonce, hash, or `'strict-dynamic'` makes browsers ignore `'unsafe-inline'`,
-/// so its presence makes the policy effectively safe against inline scripts.
 fn policy_allows_unsafe_inline(p: &ScriptPolicy) -> bool {
     if !has_keyword(&p.sources, "unsafe-inline") {
         return false;
@@ -75,7 +61,6 @@ fn policy_allows_unsafe_inline(p: &ScriptPolicy) -> bool {
     !neutralized
 }
 
-/// True for `*` or a bare scheme that lets scripts load from anywhere.
 fn sources_are_broad(sources: &[String]) -> bool {
     sources.iter().any(|s| {
         matches!(
@@ -85,8 +70,6 @@ fn sources_are_broad(sources: &[String]) -> bool {
     })
 }
 
-/// Accepts the unquoted form too: real-world headers are sloppy and we would
-/// rather over-report a relaxation than miss one.
 fn has_keyword(sources: &[String], keyword: &str) -> bool {
     let quoted = format!("'{keyword}'");
     sources
@@ -94,8 +77,6 @@ fn has_keyword(sources: &[String], keyword: &str) -> bool {
         .any(|s| s.eq_ignore_ascii_case(&quoted) || s.eq_ignore_ascii_case(keyword))
 }
 
-/// A comma separates whole policies in a combined header; delivered headers
-/// joined with newlines are split too.
 fn split_policies(header: &str) -> impl Iterator<Item = &str> {
     header
         .split(['\n', ','])
@@ -103,8 +84,6 @@ fn split_policies(header: &str) -> impl Iterator<Item = &str> {
         .filter(|p| !p.is_empty())
 }
 
-/// Applies the `default-src` fallback; directive names are case-insensitive and
-/// first occurrence wins (browsers ignore duplicates).
 fn parse_policy(policy: &str) -> ScriptPolicy {
     let mut script_src: Option<Vec<String>> = None;
     let mut default_src: Option<Vec<String>> = None;
@@ -239,20 +218,15 @@ mod tests {
 
     #[test]
     fn multiple_policies_intersect_conservatively() {
-        // Comma joins two policies: one permits unsafe-inline, the other does
-        // not. Browsers enforce both, so inline must NOT be reported as allowed.
         let csp = Csp::parse("script-src 'unsafe-inline', script-src 'self'");
         assert!(!csp.allows_unsafe_inline_scripts());
 
-        // Both permit it → reported.
         let both = Csp::parse("script-src 'unsafe-inline', default-src 'unsafe-inline'");
         assert!(both.allows_unsafe_inline_scripts());
     }
 
     #[test]
     fn non_constraining_policy_does_not_mask_a_broad_one() {
-        // One policy is broad (*), the sibling only sets img-src (no script
-        // constraint). The broad one is the only constraint on scripts.
         let csp = Csp::parse("script-src *, img-src 'self'");
         assert!(csp.has_broad_script_src());
     }

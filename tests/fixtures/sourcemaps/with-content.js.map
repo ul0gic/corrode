@@ -1,0 +1,19 @@
+{
+  "version": 3,
+  "file": "main.js",
+  "sourceRoot": "",
+  "sources": [
+    "webpack://_N_E/./src/app/page.tsx",
+    "webpack://_N_E/./src/app/admin/[id]/route.ts",
+    "webpack://_N_E/./src/utils/api.ts",
+    "webpack://_N_E/./node_modules/.pnpm/next@14.1.0/dist/client.js"
+  ],
+  "sourcesContent": [
+    "export default function Page() { return null; }",
+    "export async function GET(req) { /* TODO: add authz check */ return Response.json({}); }",
+    "export const API_BASE = '/api/internal';",
+    "module.exports = {};"
+  ],
+  "names": ["Page", "GET", "API_BASE"],
+  "x_google_ignoreList": [3]
+}

@@ -1,6 +1,8 @@
+// Does:  Detects technology signatures in HTML meta tags.
+// Holds: Only captured meta tag values contribute to detection.
+
 use crate::types::MetaTag;
 
-/// Generator meta tag signatures for SSG/CMS frameworks.
 const GENERATOR_SIGNATURES: &[(&str, &str)] = &[
     ("astro", "Astro"),
     ("wordpress", "WordPress"),
@@ -29,7 +31,9 @@ const GENERATOR_SIGNATURES: &[(&str, &str)] = &[
     ("strapi", "Strapi"),
 ];
 
-/// Detect technologies from HTML `<meta>` tags.
+/// Detects technology signatures in HTML meta tags.
+///
+///     assert!(corrode_scanner::detectors::technologies::meta::detect(&[]).is_empty());
 pub fn detect(meta_tags: &[MetaTag]) -> Vec<String> {
     let mut detected = Vec::new();
 

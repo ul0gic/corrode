@@ -1,16 +1,14 @@
-//! Route templates are reported verbatim, never instantiated.
+// Does:  Accumulates and classifies framework route candidates.
+// Holds: Duplicate path and kind pairs retain the first source.
 
 use std::collections::HashSet;
 
 use crate::types::RouteSurface;
 
-/// A path is dynamic when it carries any framework's parameter marker:
-/// Next/SvelteKit `[seg]`, Remix `:param`, or a splat/catch-all `*`.
 pub fn is_dynamic(path: &str) -> bool {
     path.contains('[') || path.contains(':') || path.contains('*')
 }
 
-/// Next.js/SvelteKit framework internals that are not user-reachable routes.
 pub fn is_framework_internal(path: &str) -> bool {
     const INTERNAL: &[&str] = &[
         "/_app",
@@ -23,8 +21,6 @@ pub fn is_framework_internal(path: &str) -> bool {
     INTERNAL.contains(&path)
 }
 
-/// Accumulates `RouteSurface`s deduped by `(path, kind)`, keeping the first
-/// (highest-trust) source seen for a given pair.
 #[derive(Default)]
 pub struct RouteSet {
     seen: HashSet<(String, String)>,
@@ -32,7 +28,6 @@ pub struct RouteSet {
 }
 
 impl RouteSet {
-    // Test-only constructor; production callers use `RouteSet::default()`.
     #[cfg(test)]
     pub fn new() -> Self {
         Self::default()
@@ -58,13 +53,10 @@ impl RouteSet {
         self.routes
     }
 
-    /// Snapshot of accumulated paths — used to populate a manifest's flat
-    /// `routes` list without consuming the set.
     pub fn clone_paths(&self) -> Vec<String> {
         self.routes.iter().map(|r| r.path.clone()).collect()
     }
 
-    // Test-only: production code consumes the set via `into_vec`/`clone_paths`.
     #[cfg(test)]
     pub fn clone_routes(&self) -> Vec<RouteSurface> {
         self.routes.clone()

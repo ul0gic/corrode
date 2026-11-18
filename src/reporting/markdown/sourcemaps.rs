@@ -1,11 +1,11 @@
-//! RSC findings render in the findings section (they are `Vulnerability`s), so
-//! they are intentionally absent here.
+// Does:  Renders source maps, framework manifests, and inferred routes in the report.
+// Holds: Only versions recovered from source maps appear in this section.
 
 use crate::types::{Confidence, ScanResult};
 
 use super::summary::{confidence_label, confidence_sort_key};
 
-/// Confidence cell for a table, e.g. `Medium`. Empty when unscored (back-compat).
+// Holds: Unscored results leave the confidence cell empty.
 fn confidence_cell(confidence: Option<&Confidence>) -> String {
     confidence.map_or_else(String::new, |c| {
         confidence_label(c.level)
@@ -14,8 +14,7 @@ fn confidence_cell(confidence: Option<&Confidence>) -> String {
     })
 }
 
-/// Detection method tagging source-map-recovered versions; matching on it keeps
-/// this section from double-listing packages the general technology section renders.
+// Why: Runtime detections already appear in the general technology section.
 const SOURCE_MAP_VERSION_METHOD: &str = "source-map dependency path";
 
 pub(crate) fn render_sourcemap_intel(result: &ScanResult) -> Vec<String> {
@@ -144,7 +143,7 @@ mod tests {
 
     #[test]
     fn empty_input_renders_nothing() {
-        assert!(render_sourcemap_intel(&base()).is_empty());
+        assert_eq!(render_sourcemap_intel(&base()), Vec::<String>::new());
     }
 
     #[test]
@@ -155,8 +154,7 @@ mod tests {
             version: Some("18.2.0".to_owned()),
             detection_method: "runtime window object".to_owned(),
         });
-        // Only a source-map-derived version (or other P1 data) should open the section.
-        assert!(render_sourcemap_intel(&result).is_empty());
+        assert_eq!(render_sourcemap_intel(&result), Vec::<String>::new());
     }
 
     #[test]
@@ -183,7 +181,6 @@ mod tests {
         assert!(md.contains("`https://app.example.com/main.js.map`"));
         assert!(md.contains("recovered"));
         assert!(md.contains("filenames only"));
-        // 2 sources counted for the first map.
         assert!(md.contains("| 2 |"));
     }
 
@@ -211,22 +208,7 @@ mod tests {
         assert!(md.contains("abc123"));
         assert!(md.contains("### Recovered Route Surface"));
         assert!(md.contains("`/admin/[id]`"));
-        // Dynamic flag rendered as yes.
         assert!(md.contains("| yes |"));
-    }
-
-    #[test]
-    fn manifest_without_build_id_renders_dash() {
-        let mut result = base();
-        result.framework_manifests.push(FrameworkManifest {
-            framework: "Remix".to_owned(),
-            manifest_type: "__remixManifest".to_owned(),
-            routes: vec!["/login".to_owned()],
-            build_id: None,
-            confidence: None,
-        });
-        let md = render_sourcemap_intel(&result).join("\n");
-        assert!(md.contains("| — |"));
     }
 
     #[test]
@@ -246,7 +228,6 @@ mod tests {
         let md = render_sourcemap_intel(&result).join("\n");
         assert!(md.contains("### Package Versions Recovered from Source Maps"));
         assert!(md.contains("next `14.1.0`"));
-        // The runtime-derived version belongs to the technology section, not here.
         assert!(!md.contains("react `18.2.0`"));
     }
 

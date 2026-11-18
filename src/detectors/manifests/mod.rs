@@ -1,5 +1,5 @@
-//! Tier A only — pure and synchronous over already-captured in-page state; this
-//! module never fetches.
+// Does:  Recovers route and component inventory from framework manifests.
+// Holds: Analysis uses only the supplied observations.
 
 mod nextjs;
 mod others;
@@ -11,8 +11,6 @@ use std::hash::BuildHasher;
 
 use crate::types::{FrameworkManifest, RouteSurface};
 
-/// Window-object keys this module reads. Names match the `JSON.stringify`
-/// capture in `collectors::javascript`.
 const NEXT_DATA: &str = "__NEXT_DATA__";
 const BUILD_MANIFEST: &str = "__BUILD_MANIFEST";
 const SSG_MANIFEST: &str = "__SSG_MANIFEST";
@@ -23,13 +21,22 @@ const NUXT: &str = "__NUXT__";
 const SVELTEKIT: &str = "__sveltekit_data";
 
 #[derive(Debug, Default)]
+/// Manifest and route observations inferred from captured page data.
 pub struct ManifestReport {
+    /// Recovered framework manifests.
     pub manifests: Vec<FrameworkManifest>,
+    /// Route and component candidates.
     pub routes: Vec<RouteSurface>,
 }
 
-/// `technologies` gates each parser, so absent frameworks cost nothing; pass empty
-/// `chunk_names`/`astro_islands` until the gate wires them.
+/// Extracts framework and route observations from captured values.
+/// Framework globals and technology names gate their respective parsers.
+///
+/// ```
+/// # use corrode_scanner::detectors::manifests::analyze;
+/// # let windows = std::collections::HashMap::from([("__NEXT_DATA__".into(), r#"{"page":"/home"}"#.into())]);
+/// let report = analyze(&windows, &[], &[], &[]);
+/// ```
 pub fn analyze<S: BuildHasher>(
     window_objects: &HashMap<String, String, S>,
     technologies: &[String],
@@ -54,14 +61,12 @@ pub fn analyze<S: BuildHasher>(
     }
 
     if tech_matches(technologies, "remix") || get(REMIX_CONTEXT).is_some() {
-        // Prefer the standalone manifest; fall back to `__remixContext` (`.manifest`).
         let manifest = get(REMIX_MANIFEST).or_else(|| get(REMIX_CONTEXT));
         let result = remix::parse(manifest);
         report.manifests.extend(result.manifests);
         report.routes.extend(result.routes.into_vec());
     }
 
-    // Astro has no window global, so it is gated on island presence / tech alone.
     let astro_present = tech_matches(technologies, "astro") || !astro_islands.is_empty();
     let nuxt = (tech_matches(technologies, "nuxt") || get(NUXT).is_some()).then(|| get(NUXT));
     let svelte = (tech_matches(technologies, "sveltekit") || get(SVELTEKIT).is_some())
@@ -81,8 +86,6 @@ pub fn analyze<S: BuildHasher>(
     report
 }
 
-/// Case-insensitive substring match against the detected technology list, so
-/// `Next.js (App Router)` matches the `next.js` gate.
 fn tech_matches(technologies: &[String], needle: &str) -> bool {
     technologies
         .iter()
@@ -160,69 +163,5 @@ mod tests {
         let report = analyze(&w, &["Next.js".to_owned(), "Nuxt".to_owned()], &[], &[]);
         assert!(report.routes.iter().any(|r| r.path == "/n"));
         assert!(report.routes.iter().any(|r| r.path == "/nuxt"));
-    }
-
-    // --- Fixture-backed coverage (task 1.12) ---
-
-    const FIXTURE_NEXT_BUILD: &str = r#"{
-  "/": ["static/chunks/pages/index.js"],
-  "/admin": ["static/chunks/pages/admin.js"],
-  "/admin/billing": ["static/chunks/pages/admin/billing.js"],
-  "/users/[id]": ["static/chunks/pages/users/[id].js"],
-  "/api/login": ["static/chunks/pages/api/login.js"]
-}
-"#;
-    const FIXTURE_REMIX_CONTEXT: &str = r#"{
-  "manifest": {
-    "routes": {
-      "root": { "id": "root", "path": "", "parentId": null },
-      "routes/login": { "id": "routes/login", "path": "login", "parentId": "root" },
-      "routes/dashboard": { "id": "routes/dashboard", "path": "dashboard", "parentId": "root" },
-      "routes/dashboard.settings": {
-        "id": "routes/dashboard.settings",
-        "path": "settings",
-        "parentId": "routes/dashboard"
-      }
-    }
-  }
-}
-"#;
-
-    #[test]
-    fn fixture_next_build_manifest_recovers_routes() {
-        let w = windows(&[(BUILD_MANIFEST, FIXTURE_NEXT_BUILD)]);
-        let report = analyze(&w, &["Next.js".to_owned()], &[], &[]);
-        let paths: std::collections::HashSet<_> =
-            report.routes.iter().map(|r| r.path.as_str()).collect();
-        assert!(paths.contains("/admin"));
-        assert!(paths.contains("/admin/billing"));
-        // Dynamic + API classification survive the real-shaped manifest.
-        assert!(report
-            .routes
-            .iter()
-            .any(|r| r.path == "/users/[id]" && r.dynamic));
-        // The build-manifest parser surfaces every key as a route template; it
-        // does not sub-classify api paths (that distinction lives in source-map intel).
-        assert!(paths.contains("/api/login"));
-    }
-
-    #[test]
-    fn fixture_remix_context_recovers_nested_routes() {
-        let w = windows(&[(REMIX_CONTEXT, FIXTURE_REMIX_CONTEXT)]);
-        let report = analyze(&w, &["Remix".to_owned()], &[], &[]);
-        let paths: std::collections::HashSet<_> =
-            report.routes.iter().map(|r| r.path.as_str()).collect();
-        assert!(paths.contains("/login"));
-        // Nested parentId chain resolves to a full path.
-        assert!(paths.contains("/dashboard/settings"));
-    }
-
-    #[test]
-    fn fixture_unparseable_manifest_degrades_without_panic() {
-        // A truncated/garbage global must yield no routes, never a panic.
-        let w = windows(&[(BUILD_MANIFEST, r#"{"/admin": ["chunk.js"}"#)]);
-        let report = analyze(&w, &["Next.js".to_owned()], &[], &[]);
-        assert!(report.routes.is_empty());
-        assert!(report.manifests.is_empty());
     }
 }

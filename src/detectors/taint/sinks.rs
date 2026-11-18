@@ -1,32 +1,29 @@
+// Does:  Classifies expressions that can consume tainted values.
+// Holds: Unrecognized sinks do not produce a match.
+
 use swc_ecma_ast::{Callee, Expr, MemberExpr, MemberProp};
 
-/// What an attacker gains by reaching this sink. Drives the gadget classifier
-/// and the CSP-bypass correlation in the fan-out detectors.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum SinkKind {
-    /// HTML parsed into the DOM: `innerHTML`, `document.write`, `insertAdjacentHTML`.
     HtmlInjection,
-    /// String compiled and executed: `eval`, `Function`, string `setTimeout`.
+
     CodeExecution,
-    /// Script element whose `src`/`text` becomes live code.
+
     ScriptLoad,
-    /// Navigation / redirect: `location = …`, `location.assign`, `form.action`.
+
     Navigation,
-    /// `iframe.src` / `iframe.srcdoc`.
+
     FrameContent,
-    /// Framework escape hatch: `dangerouslySetInnerHTML`, `bypassSecurityTrust*`, `v-html`.
+
     FrameworkEscapeHatch,
 }
 
-/// A recognized sink with its stable label and kind.
 #[derive(Debug, Clone)]
 pub(crate) struct SinkMatch {
     pub label: String,
     pub kind: SinkKind,
 }
 
-/// HTML-injection / navigation sinks reached via property assignment (`el.innerHTML =
-/// …`, `iframe.src = …`); `None` when the property is on the safe allowlist.
 pub(crate) fn classify_assign_target(member: &MemberExpr) -> Option<SinkMatch> {
     let prop = member_prop(&member.prop)?;
     if is_safe_property(prop) {
@@ -43,8 +40,7 @@ pub(crate) fn classify_assign_target(member: &MemberExpr) -> Option<SinkMatch> {
             label: "iframe.srcdoc".to_owned(),
             kind: SinkKind::FrameContent,
         }),
-        // `.src` is a sink only on a script/iframe-ish receiver; on an <img> it
-        // is benign. We accept it broadly but classify by receiver hint.
+
         "src" => {
             let kind = match obj_hint.as_deref() {
                 Some(o) if o.contains("iframe") || o.contains("frame") => SinkKind::FrameContent,
@@ -72,8 +68,6 @@ pub(crate) fn classify_assign_target(member: &MemberExpr) -> Option<SinkMatch> {
     }
 }
 
-/// `location = …` where the whole `location` identifier is the assignment
-/// target (no property). Navigation sink.
 pub(crate) fn classify_assign_ident(name: &str) -> Option<SinkMatch> {
     (name == "location").then(|| SinkMatch {
         label: "location".to_owned(),
@@ -81,8 +75,6 @@ pub(crate) fn classify_assign_ident(name: &str) -> Option<SinkMatch> {
     })
 }
 
-/// Call-shaped sinks: `eval(…)`, `new Function(…)`, `setTimeout("…")`,
-/// `el.insertAdjacentHTML(…)`, `document.write(…)`, `location.assign/replace(…)`.
 pub(crate) fn classify_call(call: &swc_ecma_ast::CallExpr) -> Option<SinkMatch> {
     let Callee::Expr(callee) = &call.callee else {
         return None;
@@ -100,7 +92,6 @@ pub(crate) fn classify_call(call: &swc_ecma_ast::CallExpr) -> Option<SinkMatch> 
     }
 }
 
-/// `new Function(…)` — code execution.
 pub(crate) fn classify_new(callee: &Expr) -> Option<SinkMatch> {
     match callee {
         Expr::Ident(ident) if ident.sym.as_ref() == "Function" => Some(SinkMatch {
@@ -121,8 +112,7 @@ fn classify_global_call(name: &str) -> Option<SinkMatch> {
             label: "Function(...)".to_owned(),
             kind: SinkKind::CodeExecution,
         }),
-        // `setTimeout`/`setInterval` are sinks only with a string first arg;
-        // the visitor checks the argument shape before recording.
+
         "setTimeout" | "setInterval" => Some(SinkMatch {
             label: format!("{name}(string)"),
             kind: SinkKind::CodeExecution,
@@ -151,8 +141,6 @@ fn classify_method_call(member: &MemberExpr) -> Option<SinkMatch> {
     }
 }
 
-/// `el.setAttribute(name, value)` is a sink only for a constant name that
-/// `is_safe_attribute` rejects; kind follows the attribute (nav / frame / code / HTML).
 fn classify_set_attribute(call: &swc_ecma_ast::CallExpr) -> Option<SinkMatch> {
     let name = string_literal_arg(call, 0)?;
     let lower = name.to_ascii_lowercase();
@@ -174,8 +162,6 @@ fn classify_set_attribute(call: &swc_ecma_ast::CallExpr) -> Option<SinkMatch> {
     })
 }
 
-/// The string-literal value of the call argument at `index`, or `None` when absent
-/// or not a plain string literal (computed names are conservatively not sinks).
 fn string_literal_arg(call: &swc_ecma_ast::CallExpr, index: usize) -> Option<String> {
     match call.args.get(index).map(|a| &*a.expr) {
         Some(Expr::Lit(swc_ecma_ast::Lit::Str(s))) => Some(s.value.to_string_lossy().to_string()),
@@ -183,8 +169,6 @@ fn string_literal_arg(call: &swc_ecma_ast::CallExpr, index: usize) -> Option<Str
     }
 }
 
-/// React `dangerouslySetInnerHTML`, Vue `v-html`, Angular `bypassSecurityTrust*`.
-/// Recognized from a JSX/property key or method name.
 pub(crate) fn classify_framework_hatch(name: &str) -> Option<SinkMatch> {
     if name == "dangerouslySetInnerHTML" {
         return Some(SinkMatch {
@@ -209,8 +193,6 @@ pub(crate) fn classify_framework_hatch(name: &str) -> Option<SinkMatch> {
 
 const SAFE_PROPERTIES: &[&str] = &["textContent", "innerText", "value", "className", "id"];
 
-/// Properties that never parse HTML or execute code. Assigning tainted data
-/// here is the dominant false-positive class, so they are hard-suppressed.
 pub(crate) fn is_safe_property(name: &str) -> bool {
     SAFE_PROPERTIES.contains(&name)
 }
@@ -225,8 +207,6 @@ const DANGEROUS_ATTRIBUTES: &[&str] = &[
     "xlink:href",
 ];
 
-/// An attribute is safe unless it can carry script (`on*` or a script-bearing name);
-/// unknown attributes default to safe, the conservative low-FP stance.
 pub(crate) fn is_safe_attribute(name: &str) -> bool {
     let lower = name.to_ascii_lowercase();
     if lower.starts_with("on") {
@@ -235,8 +215,6 @@ pub(crate) fn is_safe_attribute(name: &str) -> bool {
     !DANGEROUS_ATTRIBUTES.contains(&lower.as_str())
 }
 
-/// The leaf object name of a member chain (`document.body.innerHTML` → `body`),
-/// a receiver hint to disambiguate `.src` / `.action` / `.text`.
 fn leaf_object_name(obj: &Expr) -> Option<String> {
     match obj {
         Expr::Ident(ident) => Some(ident.sym.to_string()),
@@ -335,7 +313,6 @@ mod tests {
 
     #[test]
     fn set_attribute_computed_name_is_not_a_sink() {
-        // A non-literal attribute name cannot be classified — conservatively skip.
         let call = parse_first_call("el.setAttribute(name, tainted)").expect("call");
         assert!(classify_call(&call).is_none());
     }

@@ -1,3 +1,6 @@
+// Does:  Finds message handlers and wildcard message sends.
+// Holds: Each parsed script has an independent handler limit.
+
 use swc_common::{Span, Spanned};
 use swc_ecma_ast::{
     ArrowExpr, AssignExpr, AssignTarget, BinExpr, BinaryOp, CallExpr, Callee, Expr, FnExpr, Lit,
@@ -9,12 +12,15 @@ use super::parse::{self, ParsedModule};
 use super::sinks;
 use crate::types::PostMessageHandler;
 
-/// Bound the emitted handlers per corpus so a generated bundle that registers
-/// listeners in a loop cannot explode the report.
 const MAX_HANDLERS: usize = 200;
 
-/// Map the `postMessage` receive/send surface; `scripts` is `(source_text, source_url)`.
-/// Unparseable scripts are skipped silently (no panic on hostile input).
+/// Finds message handlers and wildcard sends in scripts.
+/// Unparseable or oversized scripts are skipped.
+///
+/// ```
+/// # use corrode_scanner::detectors::taint::postmessage::detect;
+/// let handlers = detect(&[("window.postMessage('hello', '*')", "inline")]);
+/// ```
 pub fn detect(scripts: &[(&str, &str)]) -> Vec<PostMessageHandler> {
     let mut out = Vec::new();
     for (text, url) in scripts {
@@ -28,8 +34,7 @@ pub fn detect(scripts: &[(&str, &str)]) -> Vec<PostMessageHandler> {
     out
 }
 
-/// Origin-validation posture of a handler body, in increasing safety.
-// Variant order encodes safety (None < Weak < Strict); `strongest` is `Ord::max`.
+// Why: Derived ordering lets the scan retain the strongest observed origin comparison.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 enum OriginCheck {
     None,
@@ -46,8 +51,6 @@ impl OriginCheck {
         }
     }
 
-    /// Keep the strongest posture seen — a body may both `===` the origin and
-    /// `.includes` it; the exact match is what actually gates the handler.
     fn strongest(self, other: OriginCheck) -> OriginCheck {
         self.max(other)
     }
@@ -72,7 +75,6 @@ impl<'a> HandlerVisitor<'a> {
         self.parsed.location(&self.source_name, span)
     }
 
-    /// Analyze a registered `message` handler and record its surface entry.
     fn record_handler(&mut self, handler: &Expr, span: Span) {
         if self.handlers.len() >= MAX_HANDLERS {
             return;
@@ -89,8 +91,6 @@ impl<'a> HandlerVisitor<'a> {
         });
     }
 
-    /// A wildcard `postMessage(payload, "*")` send is its own finding: delivered to
-    /// any origin. Recorded as `origin_check = "none"` — a send-side leak, not a sink.
     fn record_wildcard_send(&mut self, span: Span) {
         if self.handlers.len() >= MAX_HANDLERS {
             return;
@@ -116,7 +116,6 @@ impl Visit for HandlerVisitor<'_> {
     }
 
     fn visit_assign_expr(&mut self, n: &AssignExpr) {
-        // `window.onmessage = fn` / `onmessage = fn` registers a handler too.
         if assign_target_is_onmessage(&n.left) {
             self.record_handler(&n.right, n.span);
         }
@@ -124,7 +123,6 @@ impl Visit for HandlerVisitor<'_> {
     }
 }
 
-/// Scan a handler body for its strongest origin check and whether it reaches a sink.
 struct BodyScan {
     param: HandlerParam,
     origin: OriginCheck,
@@ -140,8 +138,6 @@ impl BodyScan {
         }
     }
 
-    /// Whether `expr` reads the handler's message origin (`<param>.origin`, or bare
-    /// `origin` when destructured). Scoped to those shapes to keep false positives down.
     fn is_origin_read(&self, expr: &Expr) -> bool {
         match unwrap_paren(expr) {
             Expr::Member(member) => {
@@ -150,8 +146,7 @@ impl BodyScan {
                 }
                 match &self.param {
                     HandlerParam::Named(name) => root_ident(&member.obj).as_deref() == Some(name),
-                    // No identifiable param: accept any `.origin` read rather
-                    // than misreport real validation as `none`.
+
                     HandlerParam::DestructuredOrigin | HandlerParam::None => true,
                 }
             }
@@ -164,14 +159,11 @@ impl BodyScan {
     }
 }
 
-/// The handler's first parameter, as far as origin validation cares.
 enum HandlerParam {
-    /// A plain identifier, e.g. `e` — origin is read as `e.origin`.
     Named(String),
-    /// An object pattern binding `origin`, e.g. `({data, origin})` — origin is
-    /// read as a bare `origin` ident.
+
     DestructuredOrigin,
-    /// Anything else (no param, or a pattern without `origin`).
+
     None,
 }
 
@@ -186,8 +178,6 @@ impl Visit for BodyScan {
     }
 
     fn visit_call_expr(&mut self, n: &CallExpr) {
-        // Weak validation: substring/prefix/unanchored-regex origin checks
-        // (`includes`, `startsWith`, `test`, …) that exact-match comparison avoids.
         if let Callee::Expr(callee) = &n.callee {
             if let Expr::Member(member) = &**callee {
                 if let Some(method) = member_prop_name(&member.prop) {
@@ -198,7 +188,7 @@ impl Visit for BodyScan {
                     if weak_method && self.is_origin_read(&member.obj) {
                         self.origin = self.origin.strongest(OriginCheck::Weak);
                     }
-                    // `pattern.test(e.origin)` — origin as the tested argument.
+
                     if method == "test" && n.args.iter().any(|a| self.is_origin_read(&a.expr)) {
                         self.origin = self.origin.strongest(OriginCheck::Weak);
                     }
@@ -237,7 +227,6 @@ impl Visit for BodyScan {
     }
 
     fn visit_jsx_attr(&mut self, n: &swc_ecma_ast::JSXAttr) {
-        // `dangerouslySetInnerHTML` / `v-html` as a JSX attribute key.
         if let swc_ecma_ast::JSXAttrName::Ident(ident) = &n.name {
             if sinks::classify_framework_hatch(ident.sym.as_ref()).is_some() {
                 self.reaches_sink = true;
@@ -247,13 +236,11 @@ impl Visit for BodyScan {
     }
 }
 
-/// If `call` is `addEventListener("message", handler)`, return the handler.
-/// The receiver is unconstrained — `window`/`self`/`top`/worker port all qualify.
 fn message_listener_handler(call: &CallExpr) -> Option<&Expr> {
     let Callee::Expr(callee) = &call.callee else {
         return None;
     };
-    // `obj.addEventListener(...)` or bare global `addEventListener(...)`.
+
     let is_add_listener = match &**callee {
         Expr::Member(member) => member_prop_name(&member.prop) == Some("addEventListener"),
         Expr::Ident(ident) => ident.sym.as_ref() == "addEventListener",
@@ -269,8 +256,6 @@ fn message_listener_handler(call: &CallExpr) -> Option<&Expr> {
     call.args.get(1).map(|a| &*a.expr)
 }
 
-/// Whether an assignment target is an `onmessage` handler property: bare
-/// `onmessage = …` or `obj.onmessage = …`.
 fn assign_target_is_onmessage(target: &AssignTarget) -> bool {
     match target {
         AssignTarget::Simple(SimpleAssignTarget::Member(member)) => {
@@ -281,8 +266,6 @@ fn assign_target_is_onmessage(target: &AssignTarget) -> bool {
     }
 }
 
-/// Whether `call` is a `postMessage(payload, "*")` send with a wildcard
-/// `targetOrigin`. The target origin is the second positional argument.
 fn is_wildcard_post_message(call: &CallExpr) -> bool {
     let Callee::Expr(callee) = &call.callee else {
         return false;
@@ -299,7 +282,6 @@ fn is_wildcard_post_message(call: &CallExpr) -> bool {
     )
 }
 
-/// Classify a function/arrow handler's first parameter for origin tracking.
 fn handler_param(expr: &Expr) -> HandlerParam {
     let pat = match unwrap_paren(expr) {
         Expr::Arrow(ArrowExpr { params, .. }) => params.first(),
@@ -313,8 +295,6 @@ fn handler_param(expr: &Expr) -> HandlerParam {
     }
 }
 
-/// Whether an object-destructuring pattern binds a property named `origin`,
-/// e.g. `{ data, origin }` or `{ origin: o }`.
 fn object_pat_binds_origin(obj: &swc_ecma_ast::ObjectPat) -> bool {
     use swc_ecma_ast::{ObjectPatProp, PropName};
     obj.props.iter().any(|prop| match prop {
@@ -326,7 +306,6 @@ fn object_pat_binds_origin(obj: &swc_ecma_ast::ObjectPat) -> bool {
     })
 }
 
-/// The leftmost identifier of a member chain: `e.origin` → `e`, `a.b.c` → `a`.
 fn root_ident(expr: &Expr) -> Option<String> {
     match unwrap_paren(expr) {
         Expr::Ident(ident) => Some(ident.sym.to_string()),
@@ -469,14 +448,12 @@ mod tests {
 
     #[test]
     fn targeted_post_message_send_is_not_flagged() {
-        // A send with an explicit origin is the secure form — no finding.
         let src = r#"win.postMessage(payload, "https://trusted.com");"#;
         assert!(detect_one(src).is_empty());
     }
 
     #[test]
     fn non_message_event_listener_is_ignored() {
-        // Only "message" handlers are postMessage surface.
         let src = r#"
             window.addEventListener("click", (e) => {
                 document.body.innerHTML = e.target.value;
@@ -506,7 +483,6 @@ mod tests {
 
     #[test]
     fn strongest_check_wins_when_both_present() {
-        // A handler that does both a weak and a strict check is strict-gated.
         let src = r#"
             addEventListener("message", (e) => {
                 if (e.origin.includes("trusted") && e.origin === "https://trusted.com") {

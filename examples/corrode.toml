@@ -108,7 +108,7 @@ severity = "high"
 # Uses a context anchor to avoid matching unrelated 32-char hex strings
 [[patterns.custom_patterns]]
 name = "Admin Panel Secret"
-pattern = '(?i)admin[_-]?secret[\s'"'"'"{0,3}(?:=|:)[\s'"'"'"{0,5}([A-Za-z0-9!@#$%^&*_\-]{24,})'
+pattern = '''(?i)admin[_-]?secret[\s'"]{0,3}(?:=|:)[\s'"]{0,5}([A-Za-z0-9!@#$%^&*_\-]{24,})'''
 severity = "critical"
 
 # Example: detect exposure of an internal service name that indicates a staging
@@ -136,3 +136,8 @@ redact_secrets = false
 # This can add significant length to reports on JS-heavy SPAs.
 # Default: false
 include_network_log = false
+# Optional evidence from the owner of an exact deployment URL.
+# Use the installed, unmodified upstream web runtime. Omit vendor-patched builds.
+# [deployments."https://app.example.org/".php]
+# unmodified_upstream_version = "8.5.12"
+# serves_web_requests = true

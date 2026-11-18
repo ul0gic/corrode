@@ -1,6 +1,8 @@
+// Does:  Renders the security posture section.
+// Holds: Absent issue categories do not produce detail tables.
+
 use crate::types::ScanResult;
 
-/// Render the Security Posture section: headers, cookies, CORS, mixed content.
 pub(crate) fn render_security_posture(result: &ScanResult) -> Vec<String> {
     let mut report = Vec::new();
 
@@ -15,7 +17,6 @@ pub(crate) fn render_security_posture(result: &ScanResult) -> Vec<String> {
 
     report.push("---\n## Security Posture\n".to_owned());
 
-    // Missing security headers
     if !result.security.missing_headers.is_empty() {
         report.push("### Missing Security Headers\n".to_owned());
         report.push("| Header | Status |".to_owned());
@@ -26,7 +27,6 @@ pub(crate) fn render_security_posture(result: &ScanResult) -> Vec<String> {
         report.push(String::new());
     }
 
-    // Cookie audit
     if !result.security.insecure_cookies.is_empty() {
         report.push("### Cookie Security Issues\n".to_owned());
         for issue in &result.security.insecure_cookies {
@@ -34,7 +34,6 @@ pub(crate) fn render_security_posture(result: &ScanResult) -> Vec<String> {
         }
         report.push(String::new());
 
-        // Per-cookie detail table if DOM cookies are available
         if !result.dom.cookies.is_empty() {
             report.push("**Cookie Details**:\n".to_owned());
             report.push("| Name | Secure | HttpOnly | SameSite | Domain |".to_owned());
@@ -51,7 +50,6 @@ pub(crate) fn render_security_posture(result: &ScanResult) -> Vec<String> {
         }
     }
 
-    // CORS issues
     if !result.security.cors_issues.is_empty() {
         report.push("### CORS Configuration Issues\n".to_owned());
         for issue in &result.security.cors_issues {
@@ -60,7 +58,6 @@ pub(crate) fn render_security_posture(result: &ScanResult) -> Vec<String> {
         report.push(String::new());
     }
 
-    // Mixed content
     if !result.security.mixed_content.is_empty() {
         report.push("### Mixed Content\n".to_owned());
         for issue in &result.security.mixed_content {

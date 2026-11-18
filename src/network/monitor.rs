@@ -1,3 +1,6 @@
+// Does:  Collects browser network events and response bodies.
+// Holds: Events are correlated by request ID in shared monitor state.
+
 use crate::types::ApiCall;
 use chromiumoxide::cdp::browser_protocol::network::{
     EnableParams, EventLoadingFinished, EventRequestWillBeSent, EventResponseReceived,
@@ -10,6 +13,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::Mutex;
 
+/// Browser network event collector keyed by request ID.
 pub struct NetworkMonitor {
     api_calls: Arc<Mutex<HashMap<String, ApiCall>>>,
 }
@@ -21,22 +25,42 @@ impl Default for NetworkMonitor {
 }
 
 impl NetworkMonitor {
+    /// Creates an empty network monitor.
+    ///
+    /// ```
+    /// # use corrode_scanner::network::monitor::NetworkMonitor;
+    /// let monitor = NetworkMonitor::new();
+    /// ```
     pub fn new() -> Self {
         Self {
             api_calls: Arc::default(),
         }
     }
 
+    /// Enables network tracking on a page, returning a browser protocol error on failure.
+    ///
+    /// ```no_run
+    /// # use corrode_scanner::network::monitor::NetworkMonitor;
+    /// # async fn setup(monitor: &NetworkMonitor, page: &chromiumoxide::Page) {
+    /// monitor.enable(page).await.unwrap();
+    /// # }
+    /// ```
     pub async fn enable(&self, page: &Page) -> Result<(), Box<dyn std::error::Error>> {
-        // Enable network tracking
         page.execute(EnableParams::default()).await?;
         Ok(())
     }
 
+    /// Starts event listeners; a listener that cannot be registered is skipped.
+    ///
+    /// ```no_run
+    /// # use corrode_scanner::network::monitor::NetworkMonitor;
+    /// # async fn setup(monitor: &NetworkMonitor, page: &chromiumoxide::Page) {
+    /// monitor.start_monitoring(page).await;
+    /// # }
+    /// ```
     pub async fn start_monitoring(&self, page: &Page) {
         let api_calls = Arc::clone(&self.api_calls);
 
-        // Listen for request events — if event_listener fails, skip this monitor
         let request_listener = page.event_listener::<EventRequestWillBeSent>().await;
         if let Ok(mut request_events) = request_listener {
             let api_calls_req = Arc::clone(&api_calls);
@@ -46,7 +70,6 @@ impl NetworkMonitor {
                     let request = &event.request;
                     let request_id = event.request_id.inner().clone();
 
-                    // Only track HTTP(S) requests
                     if !request.url.starts_with("http") {
                         continue;
                     }
@@ -72,7 +95,6 @@ impl NetworkMonitor {
             });
         }
 
-        // Listen for response events
         let response_listener = page.event_listener::<EventResponseReceived>().await;
         if let Ok(mut response_events) = response_listener {
             let api_calls_resp = Arc::clone(&api_calls);
@@ -82,7 +104,6 @@ impl NetworkMonitor {
                     let request_id = event.request_id.inner().clone();
                     let response = &event.response;
 
-                    // Cast i64 status to u16; clamp to 0 on out-of-range (defensive)
                     let status = u16::try_from(response.status).unwrap_or_default();
 
                     let mut calls = api_calls_resp.lock().await;
@@ -115,7 +136,6 @@ impl NetworkMonitor {
             });
         }
 
-        // Listen for loading finished to get response body
         let finished_listener = page.event_listener::<EventLoadingFinished>().await;
         if let Ok(mut finished_events) = finished_listener {
             let api_calls_fin = Arc::clone(&api_calls);
@@ -125,7 +145,6 @@ impl NetworkMonitor {
                 while let Some(event) = finished_events.next().await {
                     let request_id_str = event.request_id.inner().clone();
 
-                    // Try to get response body
                     if let Ok(body_result) = page_clone
                         .execute(GetResponseBodyParams {
                             request_id: event.request_id.clone(),
@@ -143,12 +162,18 @@ impl NetworkMonitor {
         }
     }
 
+    /// Returns captured calls whose URLs match the API-like patterns.
+    ///
+    /// ```
+    /// # use corrode_scanner::network::monitor::NetworkMonitor;
+    /// # let monitor = NetworkMonitor::new();
+    /// assert!(futures::executor::block_on(monitor.get_api_calls()).is_empty());
+    /// ```
     pub async fn get_api_calls(&self) -> Vec<ApiCall> {
         let calls = self.api_calls.lock().await;
         calls
             .values()
             .filter(|c| {
-                // Filter to only API-like calls
                 c.url.contains("/api/")
                     || c.url.contains("/graphql")
                     || c.url.contains("/v1/")
@@ -160,12 +185,25 @@ impl NetworkMonitor {
             .collect()
     }
 
+    /// Returns a snapshot of captured calls in unspecified order.
+    ///
+    /// ```
+    /// # use corrode_scanner::network::monitor::NetworkMonitor;
+    /// # let monitor = NetworkMonitor::new();
+    /// assert!(futures::executor::block_on(monitor.get_all_calls()).is_empty());
+    /// ```
     pub async fn get_all_calls(&self) -> Vec<ApiCall> {
         let calls = self.api_calls.lock().await;
         calls.values().cloned().collect()
     }
 
-    /// Extract source map URLs from `SourceMap` or `X-SourceMap` response headers.
+    /// Returns source-map references from captured response headers.
+    ///
+    /// ```
+    /// # use corrode_scanner::network::monitor::NetworkMonitor;
+    /// # let monitor = NetworkMonitor::new();
+    /// assert!(futures::executor::block_on(monitor.get_source_map_headers()).is_empty());
+    /// ```
     pub async fn get_source_map_headers(&self) -> Vec<String> {
         let calls = self.api_calls.lock().await;
         let mut source_maps = Vec::new();
@@ -217,8 +255,6 @@ fn header_value<'a>(headers: &'a HashMap<String, String>, key: &str) -> Option<&
         .map(|(_, v)| v.as_str())
 }
 
-/// Reconstruct the request body from CDP's `postDataEntries` (replaces the
-/// removed `postData` field in newer CDP versions).
 fn extract_post_data(entries: Option<&Vec<PostDataEntry>>) -> Option<String> {
     let entries = entries?;
     let combined: String = entries

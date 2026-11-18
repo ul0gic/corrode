@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>CSP-Correlation Fixture - Corrode QA</title>
+    <!--
+        Permissive CSP (unsafe-inline + unsafe-eval) paired with matching sinks
+        so the CSP-bypass correlation can fire "sink exists, CSP would not block."
+        The effective policy is delivered via a Content-Security-Policy header in
+        a live scan; this meta mirrors it for the static fixture corpus.
+    -->
+    <meta http-equiv="Content-Security-Policy"
+          content="default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https:">
+</head>
+<body>
+    <div id="app"></div>
+
+    <!-- eval sink — unsafe-eval in the policy means it is not blocked -->
+    <script>
+        function run() {
+            const code = location.hash.slice(1);
+            eval(code);
+        }
+    </script>
+
+    <!-- innerHTML sink — unsafe-inline means injected inline handlers run -->
+    <script>
+        function render() {
+            const html = new URLSearchParams(location.search).get("html");
+            document.getElementById("app").innerHTML = html;
+        }
+    </script>
+</body>
+</html>

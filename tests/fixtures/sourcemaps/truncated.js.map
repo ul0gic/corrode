@@ -1,0 +1,5 @@
+{
+  "version": 3,
+  "file": "broken.js",
+  "sources": ["webpack://app/./src/app/page.tsx"],
+  "sourcesContent": ["export default function Page() { ret

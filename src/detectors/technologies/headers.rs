@@ -1,6 +1,8 @@
+// Does:  Detects technology signatures in captured response headers.
+// Holds: Detection uses captured calls without issuing requests.
+
 use crate::types::ApiCall;
 
-/// Server/reverse-proxy signatures detected from the `server` header.
 const SERVER_SIGNATURES: &[(&str, &str)] = &[
     ("cloudflare", "Cloudflare"),
     ("nginx", "nginx"),
@@ -30,7 +32,6 @@ const SERVER_SIGNATURES: &[(&str, &str)] = &[
     ("unicorn", "Unicorn"),
 ];
 
-/// Backend framework signatures detected from `x-powered-by`.
 const POWERED_BY_SIGNATURES: &[(&str, &str)] = &[
     ("express", "Express"),
     ("asp.net", "ASP.NET"),
@@ -55,7 +56,9 @@ const POWERED_BY_SIGNATURES: &[(&str, &str)] = &[
     ("sails", "Sails.js"),
 ];
 
-/// Detect technologies from HTTP response headers across all captured requests.
+/// Detects technology signatures in captured response headers.
+///
+///     assert!(corrode_scanner::detectors::technologies::headers::detect(&[]).is_empty());
 pub fn detect(calls: &[ApiCall]) -> Vec<String> {
     let mut detected = Vec::new();
 

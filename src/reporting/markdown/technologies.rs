@@ -1,10 +1,11 @@
+// Does:  Renders detected technologies and DOM insights.
+// Holds: Technology categories are emitted in a fixed order.
+
 use anyhow::Result;
 
 use crate::types::ScanResult;
 
-/// Keyword-to-category mapping for technology classification.
 const TECH_CATEGORIES: &[(&str, &str)] = &[
-    // Frameworks
     ("react", "Frameworks"),
     ("vue", "Frameworks"),
     ("angular", "Frameworks"),
@@ -15,7 +16,6 @@ const TECH_CATEGORIES: &[(&str, &str)] = &[
     ("gatsby", "Frameworks"),
     ("ember", "Frameworks"),
     ("backbone", "Frameworks"),
-    // Static Site Generators
     ("astro", "Static Site Generators"),
     ("hugo", "Static Site Generators"),
     ("jekyll", "Static Site Generators"),
@@ -25,7 +25,6 @@ const TECH_CATEGORIES: &[(&str, &str)] = &[
     ("vuepress", "Static Site Generators"),
     ("mkdocs", "Static Site Generators"),
     ("pelican", "Static Site Generators"),
-    // Backend
     ("express", "Backend"),
     ("asp.net", "Backend"),
     ("php", "Backend"),
@@ -36,7 +35,6 @@ const TECH_CATEGORIES: &[(&str, &str)] = &[
     ("koa", "Backend"),
     ("hapi", "Backend"),
     ("cowboy", "Backend"),
-    // Infrastructure
     ("cloudflare", "Infrastructure"),
     ("nginx", "Infrastructure"),
     ("apache", "Infrastructure"),
@@ -49,16 +47,13 @@ const TECH_CATEGORIES: &[(&str, &str)] = &[
     ("openresty", "Infrastructure"),
     ("gunicorn", "Infrastructure"),
     ("deno deploy", "Infrastructure"),
-    // Authentication
     ("auth0", "Authentication"),
     ("clerk", "Authentication"),
     ("okta", "Authentication"),
-    // Payment
     ("stripe", "Payment"),
     ("paypal", "Payment"),
     ("braintree", "Payment"),
     ("square", "Payment"),
-    // Analytics
     ("google analytics", "Analytics"),
     ("gtag", "Analytics"),
     ("gtm", "Analytics"),
@@ -69,7 +64,6 @@ const TECH_CATEGORIES: &[(&str, &str)] = &[
     ("heap", "Analytics"),
     ("fullstory", "Analytics"),
     ("plausible", "Analytics"),
-    // CMS/Platforms
     ("wordpress", "CMS/Platforms"),
     ("drupal", "CMS/Platforms"),
     ("joomla", "CMS/Platforms"),
@@ -80,34 +74,29 @@ const TECH_CATEGORIES: &[(&str, &str)] = &[
     ("webflow", "CMS/Platforms"),
     ("contentful", "CMS/Platforms"),
     ("strapi", "CMS/Platforms"),
-    // Cloud/BaaS
     ("supabase", "Cloud/BaaS"),
     ("firebase", "Cloud/BaaS"),
     ("appwrite", "Cloud/BaaS"),
     ("aws", "Cloud/BaaS"),
     ("azure", "Cloud/BaaS"),
     ("gcp", "Cloud/BaaS"),
-    // Libraries
     ("jquery", "Libraries"),
     ("lodash", "Libraries"),
     ("axios", "Libraries"),
     ("moment", "Libraries"),
     ("tailwind", "Libraries"),
     ("bootstrap", "Libraries"),
-    // State Management
     ("redux", "State Management"),
     ("mobx", "State Management"),
     ("zustand", "State Management"),
     ("pinia", "State Management"),
     ("recoil", "State Management"),
-    // Monitoring
     ("sentry", "Monitoring"),
     ("datadog", "Monitoring"),
     ("newrelic", "Monitoring"),
     ("logr", "Monitoring"),
 ];
 
-/// Categorize a technology name into a group for organized display.
 fn categorize_technology(tech: &str) -> &'static str {
     let lower = tech.to_lowercase();
     for (keyword, category) in TECH_CATEGORIES {
@@ -127,13 +116,11 @@ pub(crate) fn render_technologies(result: &ScanResult) -> Vec<String> {
 
     report.push("---\n## Technology Stack\n".to_owned());
 
-    // Group technologies by category
     let mut categories: std::collections::HashMap<&str, Vec<String>> =
         std::collections::HashMap::new();
 
     for tech in &result.technologies {
         let category = categorize_technology(tech);
-        // Check if we have a version for this technology
         let version_info = result
             .technology_versions
             .iter()
@@ -149,7 +136,6 @@ pub(crate) fn render_technologies(result: &ScanResult) -> Vec<String> {
         categories.entry(category).or_default().push(display);
     }
 
-    // Also add technology versions not in the base list
     for tv in &result.technology_versions {
         let already_listed = result
             .technologies
@@ -166,7 +152,6 @@ pub(crate) fn render_technologies(result: &ScanResult) -> Vec<String> {
         }
     }
 
-    // Render in a stable order
     let category_order = [
         "Frameworks",
         "Static Site Generators",

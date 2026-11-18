@@ -1,3 +1,6 @@
+// Does:  Extracts Next.js manifest and route observations.
+// Holds: Malformed JSON globals are skipped without blocking other inputs.
+
 use std::sync::LazyLock;
 
 use regex::Regex;
@@ -12,8 +15,6 @@ pub struct NextResult {
     pub routes: RouteSet,
 }
 
-/// Parses whatever Next.js JSON globals are present; absent, truncated, or
-/// unparseable values are skipped, never panicked on.
 pub fn parse(
     next_data: Option<&str>,
     build_manifest: Option<&str>,
@@ -77,7 +78,6 @@ fn parse_build_manifest(value: &Value, out: &mut NextResult) {
 
     let mut routes = Vec::new();
 
-    // Object keys that look like paths are route templates.
     for key in obj.keys() {
         if key.starts_with('/') && !is_framework_internal(key) {
             out.routes.push(key, "route", "next:build-manifest");
@@ -85,7 +85,6 @@ fn parse_build_manifest(value: &Value, out: &mut NextResult) {
         }
     }
 
-    // `sortedPages` is the authoritative list; framework internals filtered.
     if let Some(pages) = obj.get("sortedPages").and_then(Value::as_array) {
         for page in pages.iter().filter_map(Value::as_str) {
             if page.starts_with('/') && !is_framework_internal(page) {
@@ -97,7 +96,6 @@ fn parse_build_manifest(value: &Value, out: &mut NextResult) {
         }
     }
 
-    // `__rewrites` destinations are hidden-path leads.
     if let Some(rewrites) = obj.get("__rewrites").and_then(Value::as_object) {
         for group in ["beforeFiles", "afterFiles", "fallback"] {
             let Some(rules) = rewrites.get(group).and_then(Value::as_array) else {
@@ -124,7 +122,6 @@ fn parse_build_manifest(value: &Value, out: &mut NextResult) {
 }
 
 fn parse_ssg_manifest(value: &Value, out: &mut NextResult) {
-    // The collector probe converts the `Set` to an array before stringifying.
     let Some(arr) = value.as_array() else {
         return;
     };
@@ -144,15 +141,12 @@ fn parse_ssg_manifest(value: &Value, out: &mut NextResult) {
     });
 }
 
-// Conservative path-shaped match over decoded Flight strings; the Flight grammar
-// is unstable across Next versions, so we never attempt a full parse (brief §1d).
+// Why: The fixed regular expression is compiled once and must be valid.
 #[allow(clippy::unwrap_used)]
 static APP_SEGMENT_RE: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"app/([A-Za-z0-9_./()\[\]@.-]*?)/(page|layout|route)\b").unwrap());
 
 fn parse_flight(raw: &str, out: &mut NextResult) {
-    // The collector stringifies `__next_f` (array of `[type, payload]` tuples).
-    // Parse loosely: scan the whole serialized blob for `app/.../page|route`.
     let mut emitted = false;
     for cap in APP_SEGMENT_RE.captures_iter(raw) {
         let segments = &cap[1];
@@ -174,8 +168,6 @@ fn parse_flight(raw: &str, out: &mut NextResult) {
     }
 }
 
-/// Turn `app/(marketing)/about` segment text into `/about`: route groups
-/// `(group)` and parallel slots `@slot` are URL-transparent and dropped.
 fn flight_segments_to_path(segments: &str) -> String {
     let kept: Vec<&str> = segments
         .split('/')
@@ -223,8 +215,8 @@ mod tests {
         let p = paths(&out);
         assert!(p.contains(&"/".to_owned()));
         assert!(p.contains(&"/posts/[id]".to_owned()));
-        assert!(p.contains(&"/new".to_owned())); // rewrite destination
-        assert!(!p.contains(&"/_app".to_owned())); // framework internal filtered
+        assert!(p.contains(&"/new".to_owned()));
+        assert!(!p.contains(&"/_app".to_owned()));
         let dyn_route = out
             .routes
             .clone_routes()
@@ -245,12 +237,11 @@ mod tests {
 
     #[test]
     fn flight_stream_recovers_app_router_routes_and_handlers() {
-        // Serialized `__next_f` blob with App Router segment references.
         let raw = r#"[[1,"2:[\"$\",\"div\"]"],[1,"app/dashboard/page app/(marketing)/about/page app/users/[id]/page app/health/route"]]"#;
         let out = parse(None, None, None, Some(raw));
         let p = paths(&out);
         assert!(p.contains(&"/dashboard".to_owned()));
-        assert!(p.contains(&"/about".to_owned())); // route group dropped
+        assert!(p.contains(&"/about".to_owned()));
         assert!(p.contains(&"/users/[id]".to_owned()));
         let api = out
             .routes
@@ -258,7 +249,7 @@ mod tests {
             .into_iter()
             .find(|r| r.path == "/health")
             .unwrap();
-        assert_eq!(api.kind, "api"); // `/route` suffix => route handler
+        assert_eq!(api.kind, "api");
     }
 
     #[test]
@@ -272,12 +263,11 @@ mod tests {
     fn unparseable_or_absent_globals_yield_nothing() {
         let out = parse(Some("not json {"), Some("]["), None, None);
         assert!(out.manifests.is_empty());
-        assert!(paths(&out).is_empty());
+        assert_eq!(paths(&out), Vec::<String>::new());
     }
 
     #[test]
     fn truncated_build_manifest_degrades_without_panic() {
-        // A value clipped at 10000 chars is invalid JSON; must be skipped.
         let raw = r#"{"/": ["chunk.js"], "/about": ["#;
         let out = parse(None, Some(raw), None, None);
         assert!(out.manifests.is_empty());

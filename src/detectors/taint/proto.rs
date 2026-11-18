@@ -1,3 +1,6 @@
+// Does:  Finds prototype-pollution-shaped flows in scripts.
+// Holds: Taint state is scoped to individual functions.
+
 use std::collections::HashMap;
 
 use swc_common::{Span, Spanned};
@@ -10,9 +13,8 @@ use swc_ecma_visit::{Visit, VisitWith};
 use super::parse::{self, ParsedModule};
 use super::sources::{self, SourceMatch};
 
-/// A prototype-pollution surface: a tainted source reaching a pollution-shaped
-/// sink. `path` is the variable/transform hops between them. Reported as a lead.
 #[derive(Debug, Clone)]
+/// A potential prototype-pollution flow identified in a script.
 pub struct ProtoFinding {
     source: String,
     sink: String,
@@ -20,28 +22,47 @@ pub struct ProtoFinding {
 }
 
 impl ProtoFinding {
+    /// Returns the detected taint source.
+    ///
+    /// ```
+    /// # use corrode_scanner::detectors::taint::proto::detect;
+    /// # let script = "const key = location.hash; obj.__proto__ = key;";
+    /// # let findings = detect(&[(script, "inline")]);
+    /// let source = findings[0].source();
+    /// ```
     pub fn source(&self) -> &str {
         &self.source
     }
 
+    /// Returns the detected pollution sink.
+    ///
+    /// ```
+    /// # use corrode_scanner::detectors::taint::proto::detect;
+    /// # let script = "const key = location.hash; obj.__proto__ = key;";
+    /// # let findings = detect(&[(script, "inline")]);
+    /// let sink = findings[0].sink();
+    /// ```
     pub fn sink(&self) -> &str {
         &self.sink
     }
 
+    /// Returns the source location of the sink.
+    ///
+    /// ```
+    /// # use corrode_scanner::detectors::taint::proto::detect;
+    /// # let script = "const key = location.hash; obj.__proto__ = key;";
+    /// # let findings = detect(&[(script, "inline")]);
+    /// let location = findings[0].location();
+    /// ```
     pub fn location(&self) -> &str {
         &self.location
     }
 }
 
-/// Bound on findings per corpus — keeps a pathological bundle from exploding.
 const MAX_FINDINGS: usize = 200;
 
-/// Property names whose write mutates the prototype chain — the canonical
-/// pollution sink when the base object is attacker-influenced.
 const POLLUTION_KEYS: &[&str] = &["__proto__", "prototype", "constructor"];
 
-/// Recursive-copy helpers that can set `__proto__` from a tainted path-shaped payload.
-/// Matched on method/function name regardless of receiver (lodash `_`, `$`, bare).
 const MERGE_HELPERS: &[&str] = &[
     "merge",
     "mergeWith",
@@ -57,8 +78,13 @@ const MERGE_HELPERS: &[&str] = &[
     "deepAssign",
 ];
 
-/// Scan a corpus of `(source_text, source_url)` scripts for prototype-pollution
-/// surfaces. Unparseable/oversized scripts are skipped silently (no panic).
+/// Finds potential prototype-pollution flows in scripts.
+/// Unparseable or oversized scripts are skipped.
+///
+/// ```
+/// # use corrode_scanner::detectors::taint::proto::detect;
+/// let findings = detect(&[("const key = location.hash; obj.__proto__ = key;", "inline")]);
+/// ```
 pub fn detect(scripts: &[(&str, &str)]) -> Vec<ProtoFinding> {
     let mut findings = Vec::new();
     for (text, url) in scripts {
@@ -72,8 +98,6 @@ pub fn detect(scripts: &[(&str, &str)]) -> Vec<ProtoFinding> {
     dedupe(findings)
 }
 
-/// How a variable became tainted: its origin source and the hops it flowed
-/// through, for human-readable path rendering.
 #[derive(Debug, Clone)]
 struct TaintMark {
     source: SourceMatch,
@@ -92,8 +116,7 @@ impl TaintMark {
 struct ProtoVisitor<'a> {
     parsed: &'a ParsedModule,
     source_name: String,
-    /// Variables tainted in the *current* function scope, reset at every
-    /// function boundary so taint never crosses functions.
+
     env: HashMap<String, TaintMark>,
     findings: Vec<ProtoFinding>,
 }
@@ -118,8 +141,6 @@ impl<'a> ProtoVisitor<'a> {
         self.env = saved;
     }
 
-    /// Resolve an expression's taint (direct source, tracked variable, or transform
-    /// over one), origin mark with hop appended or `None`. Mirrors the engine visitor.
     fn taint_of(&self, expr: &Expr) -> Option<TaintMark> {
         if let Some(source) =
             sources::classify_expr(expr).or_else(|| sources::classify_bare_ident(expr))
@@ -149,8 +170,6 @@ impl<'a> ProtoVisitor<'a> {
         }
     }
 
-    /// Parse/transform calls (`JSON.parse`, `decodeURIComponent`, `.split`, …) keep
-    /// taint — they turn a string source into a mergeable object shape.
     fn taint_of_call(&self, call: &CallExpr) -> Option<TaintMark> {
         if let Some(arg) = call.args.first() {
             if let Some(mark) = self.taint_of(&arg.expr) {
@@ -176,14 +195,11 @@ impl<'a> ProtoVisitor<'a> {
         });
     }
 
-    /// An assignment is a pollution sink when its property is a pollution key
-    /// (`x.__proto__ = …`) or a tainted computed key (`obj[userKey] = …`).
     fn check_sink_assign(&mut self, assign: &AssignExpr) {
         let AssignTarget::Simple(SimpleAssignTarget::Member(member)) = &assign.left else {
             return;
         };
 
-        // A pollution-key write: the RHS taint is what makes it a live surface.
         if let Some(key) = static_prop(&member.prop) {
             if POLLUTION_KEYS.contains(&key.as_str()) {
                 if let Some(mark) = self.taint_of(&assign.right) {
@@ -193,8 +209,6 @@ impl<'a> ProtoVisitor<'a> {
             }
         }
 
-        // A configurable-key write: `obj[k] = v` where the *key* is tainted lets
-        // an attacker pick `__proto__`. Flag on the tainted key regardless of RHS.
         if let MemberProp::Computed(comp) = &member.prop {
             if let Some(mark) = self.taint_of(&comp.expr) {
                 self.record(&mark, "configurable-key write".to_owned(), assign.span());
@@ -202,8 +216,6 @@ impl<'a> ProtoVisitor<'a> {
         }
     }
 
-    /// A call is a pollution sink when it is a merge/extend/set helper with at least
-    /// one tainted argument; a constant-only merge is deliberately not a finding.
     fn check_sink_call(&mut self, call: &CallExpr) {
         let Some(name) = callee_name(call) else {
             return;
@@ -211,8 +223,7 @@ impl<'a> ProtoVisitor<'a> {
         if !MERGE_HELPERS.contains(&name.as_str()) {
             return;
         }
-        // Require 3-arg `set`/`setWith` (lodash path-set); a 2-arg call is almost
-        // always `Map.set(key, value)`, not pollution — skips Map/Set noise.
+
         if matches!(name.as_str(), "set" | "setWith") && call.args.len() < 3 {
             return;
         }
@@ -224,8 +235,6 @@ impl<'a> ProtoVisitor<'a> {
         }
     }
 
-    /// Propagate taint through `let/const/var x = …` so a parsed payload carries
-    /// its origin into a later merge sink in the same scope.
     fn propagate_var(&mut self, decl: &VarDeclarator) {
         let Some(init) = &decl.init else { return };
         let Pat::Ident(binding) = &decl.name else {
@@ -252,8 +261,6 @@ impl<'a> ProtoVisitor<'a> {
     }
 }
 
-/// A member property as a static key string, dotted (`x.__proto__`) or string-literal
-/// subscript (`x["__proto__"]`); a computed-expression key is not static.
 fn static_prop(prop: &MemberProp) -> Option<String> {
     match prop {
         MemberProp::Ident(ident) => Some(ident.sym.to_string()),
@@ -265,8 +272,6 @@ fn static_prop(prop: &MemberProp) -> Option<String> {
     }
 }
 
-/// The called function's bare name: `merge(...)`, `_.merge(...)`,
-/// `lodash.mergeWith(...)`, `$.extend(...)` all resolve to the method/ident.
 fn callee_name(call: &CallExpr) -> Option<String> {
     let Callee::Expr(callee) = &call.callee else {
         return None;
@@ -371,8 +376,6 @@ mod tests {
 
     #[test]
     fn merge_with_constant_keys_is_not_a_finding() {
-        // A deep-merge of static, untainted data is the dominant false positive
-        // and must be suppressed.
         let src = r#"
             const defaults = { theme: "dark", size: 10 };
             merge(config, defaults);
@@ -391,7 +394,6 @@ mod tests {
 
     #[test]
     fn map_set_two_args_is_not_a_merge_finding() {
-        // `cache.set(key, tainted)` is a Map write, not lodash path-set pollution.
         let src = r#"
             const v = location.hash;
             cache.set("k", v);

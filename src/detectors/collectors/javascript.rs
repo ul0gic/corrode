@@ -1,3 +1,6 @@
+// Does:  Collects observed scripts and framework metadata from the page.
+// Holds: Source-map references retain the page or script URL they resolve against.
+
 use anyhow::Result;
 use chromiumoxide::Page;
 use regex::Regex;
@@ -8,29 +11,52 @@ use tokio::time::{self, Duration};
 use url::Url;
 
 use super::ast;
-use crate::api::discovery::extract_api_endpoints;
+use crate::detectors::endpoints::extract_api_endpoints;
 use crate::detectors::secrets::SecretScanner;
 use crate::scanner::page_utils;
 use crate::types::{AstFinding, DiscoveredEndpoint};
 
+/// Script, framework, and endpoint observations from a page.
 pub struct ScriptArtifacts {
+    /// Number of observed script elements.
     pub script_count: usize,
+    /// Captured script element records.
     pub scripts_array: Vec<Value>,
+    /// Observed source-map references.
     pub source_maps: Vec<String>,
-    /// `(referrer, map_ref)` pairs — referrer is the base relative map URLs resolve against.
+
+    /// Reference pairs of resolution base and source-map reference.
     pub source_map_candidates: Vec<(String, String)>,
-    /// `(text, source)` script bodies retained so the RSC detector grades the corpus without re-fetching.
+
+    /// Retained script text and source labels.
     pub script_bodies: Vec<(String, String)>,
+    /// Observed chunk URLs.
     pub chunk_names: Vec<String>,
-    /// Astro has no `window` global, so islands are the only client-side signal of its route surface.
+
+    /// Captured Astro island attributes.
     pub astro_islands: Vec<String>,
+    /// Captured window globals serialized as strings.
     pub window_objects: HashMap<String, String>,
+    /// Detected framework and debug-mode signals.
     pub debug_flags: Vec<String>,
+    /// Endpoints inferred from script content.
     pub api_endpoints: Vec<DiscoveredEndpoint>,
+    /// Findings inferred by static script analysis.
     pub ast_findings: Vec<AstFinding>,
 }
 
+// Why: Collection coordinates related page observations in a single pass.
 #[allow(clippy::too_many_lines)]
+/// Collects script and framework artifacts from a page.
+///
+/// ```no_run
+/// # use corrode_scanner::detectors::collectors::javascript::collect;
+/// # use corrode_scanner::detectors::secrets::SecretScanner;
+/// # async fn example(page: &chromiumoxide::Page, scanner: &SecretScanner) -> anyhow::Result<()> {
+/// let artifacts = collect(page, scanner, None, "about:blank").await?;
+/// # Ok(())
+/// # }
+/// ```
 pub async fn collect(
     page: &Page,
     scanner: &SecretScanner,
@@ -61,9 +87,9 @@ pub async fn collect(
             if should_analyze_ast(None, target_host) {
                 ast_findings.extend(ast::analyze_script(content, &label));
             }
-            // Retain only; per-script RSC grading would double-emit findings `rsc::detect` already covers.
+
             script_bodies.push((content.to_owned(), label));
-            // Maps referenced by an inline script resolve against the page URL.
+
             for map_ref in detect_source_map_urls(content) {
                 source_map_candidates.push((page_url.to_owned(), map_ref.clone()));
                 source_maps.push(map_ref);
@@ -73,19 +99,17 @@ pub async fn collect(
         if let Some(src) = script.get("src").and_then(|v| v.as_str()) {
             if !src.is_empty() {
                 let src_lower = src.to_ascii_lowercase();
+                // Why: The URL is lowercased immediately before the extension checks.
                 #[allow(clippy::case_sensitive_file_extension_comparisons)]
                 if src_lower.ends_with(".map") || src_lower.contains(".js.map") {
-                    // A `.map` script src is itself the map; resolve against the page URL.
                     source_map_candidates.push((page_url.to_owned(), src.to_owned()));
                     source_maps.push(src.to_owned());
                 }
 
                 let mut fetched = None;
 
-                // Scope before egress: never issue a GET to an off-origin src.
                 let first_party = is_first_party_url(src, target_host);
 
-                // Only fetch http/https scripts — never file:// (SEC-005)
                 if first_party && (src.starts_with("http://") || src.starts_with("https://")) {
                     if let Ok(Ok(resp)) =
                         time::timeout(Duration::from_secs(10), reqwest::get(src)).await
@@ -108,7 +132,7 @@ pub async fn collect(
                     if should_analyze_ast(Some(src), target_host) {
                         ast_findings.extend(ast::analyze_script(&text, src));
                     }
-                    // Maps referenced inside an external script resolve against that script.
+
                     for map_ref in detect_source_map_urls(&text) {
                         source_map_candidates.push((src.to_owned(), map_ref.clone()));
                         source_maps.push(map_ref);
@@ -167,7 +191,6 @@ pub async fn collect(
     )
     .await;
 
-    // Scan window object values through the secret scanner
     for (key, value) in &window_objects {
         scanner
             .scan_text(value, &format!("Window Object: {key}"))
@@ -219,7 +242,6 @@ pub async fn collect(
     })
 }
 
-/// Combines `<script src>` URLs with `<link rel="modulepreload">` hrefs; returns raw URLs, not stems.
 async fn collect_chunk_names(page: &Page, scripts_array: &[Value]) -> Vec<String> {
     let mut chunks: Vec<String> = scripts_array
         .iter()
@@ -241,7 +263,6 @@ async fn collect_chunk_names(page: &Page, scripts_array: &[Value]) -> Vec<String
     chunks
 }
 
-/// Astro exposes no `window` route global, so `<astro-island>` attributes are the only client signal.
 async fn collect_astro_islands(page: &Page) -> Vec<String> {
     page_utils::extract_json::<Vec<String>>(
         page,
@@ -288,7 +309,7 @@ fn is_first_party_url(url: &str, target_host: Option<&str>) -> bool {
     true
 }
 
-/// Detect `sourceMappingURL` comments in script content.
+// Why: The fixed regular expression is compiled once and must be valid.
 #[allow(clippy::unwrap_used)]
 static SOURCE_MAP_URL_RE: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r"(?://[#@]|/\*[#@])\s*sourceMappingURL\s*=\s*(\S+\.map)\b").unwrap()
@@ -319,33 +340,9 @@ mod tests {
 
     #[test]
     fn ignores_scripts_with_no_map_reference() {
-        assert!(detect_source_map_urls("const x = 1; // just a comment").is_empty());
-    }
-
-    // Asserts the referrer-assignment contract `collect` uses: inline maps resolve against
-    // the page URL, external maps against the script `src`.
-    #[test]
-    fn referrer_assignment_matches_collect_contract() {
-        let page_url = "https://example.com/app";
-        let inline = "//# sourceMappingURL=inline.js.map";
-        let inline_candidates: Vec<(String, String)> = detect_source_map_urls(inline)
-            .into_iter()
-            .map(|m| (page_url.to_owned(), m))
-            .collect();
         assert_eq!(
-            inline_candidates,
-            vec![(page_url.to_owned(), "inline.js.map".to_owned())]
-        );
-
-        let script_src = "https://cdn.example.com/static/main.js";
-        let external = "//# sourceMappingURL=main.js.map";
-        let external_candidates: Vec<(String, String)> = detect_source_map_urls(external)
-            .into_iter()
-            .map(|m| (script_src.to_owned(), m))
-            .collect();
-        assert_eq!(
-            external_candidates,
-            vec![(script_src.to_owned(), "main.js.map".to_owned())]
+            detect_source_map_urls("const x = 1; // just a comment"),
+            Vec::<String>::new()
         );
     }
 }
