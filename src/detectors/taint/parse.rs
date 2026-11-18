@@ -1,3 +1,6 @@
+// Does:  Parses scripts and resolves source locations for taint detectors.
+// Holds: Empty, oversized, and unparseable scripts are skipped.
+
 use std::sync::Arc;
 
 use swc_common::{BytePos, FileName, SourceMap, Span, DUMMY_SP};
@@ -9,19 +12,14 @@ use swc_ecma_parser::{
 };
 use swc_ecma_parser::{EsSyntax, TsSyntax};
 
-/// Scripts larger than this are skipped — see `MAX_SCRIPT_BYTES` in
-/// `collectors/ast.rs`. Bundle traversal is bounded, not unbounded.
 pub(crate) const MAX_SCRIPT_BYTES: usize = 500_000;
 
-/// A parsed module paired with its source map, for line/col resolution.
 pub(crate) struct ParsedModule {
     pub module: Module,
     pub source_map: Arc<SourceMap>,
 }
 
 impl ParsedModule {
-    /// Resolve a span to a `file:line:col` string. A zero span (synthesized
-    /// node) collapses to the file head rather than panicking.
     pub(crate) fn location(&self, source_name: &str, span: Span) -> String {
         let pos = match span {
             Span { lo, .. } if lo != BytePos(0) => lo,
@@ -32,8 +30,6 @@ impl ParsedModule {
     }
 }
 
-/// Tries ES syntax first, then TypeScript. Returns `None` on empty/oversized/
-/// unparseable input so callers degrade gracefully (no panic on hostile input).
 pub(crate) fn parse_script(source: &str, source_name: &str) -> Option<ParsedModule> {
     if source.trim().is_empty() || source.len() > MAX_SCRIPT_BYTES {
         return None;
@@ -96,12 +92,10 @@ mod test_helpers {
         })
     }
 
-    /// First top-level expression of a snippet — for source-classifier tests.
     pub(crate) fn parse_first_expr(src: &str) -> Option<Expr> {
         first_expr_stmt(src).map(|boxed| *boxed)
     }
 
-    /// First top-level call expression — for sink-classifier tests.
     pub(crate) fn parse_first_call(src: &str) -> Option<CallExpr> {
         match *first_expr_stmt(src)? {
             Expr::Call(call) => Some(call),
@@ -109,8 +103,6 @@ mod test_helpers {
         }
     }
 
-    /// First top-level assignment, returned as `(member_target, rhs)` — for
-    /// sink-assignment tests. Only member-target assignments are returned.
     pub(crate) fn parse_first_assign(src: &str) -> Option<(MemberExpr, Box<Expr>)> {
         match *first_expr_stmt(src)? {
             Expr::Assign(assign) => match assign.left {

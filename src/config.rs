@@ -1,82 +1,127 @@
+// Does:  Combines file settings with CLI defaults and reads batch targets.
+// Holds: An invalid batch line rejects the entire list before any target is returned.
+
 use anyhow::{Context, Result};
 use clap::ValueEnum;
 use serde::Deserialize;
 use std::fs;
 use std::path::{Path, PathBuf};
 
+/// Report formats requested for a scan.
 #[derive(Debug, Clone, Copy, Eq, PartialEq, ValueEnum)]
 pub enum OutputFormat {
+    /// Machine-readable scan result.
     Json,
+    /// Markdown report and evidence files.
     Md,
+    /// Both JSON and Markdown artifacts.
     Both,
 }
 
-/// Runtime configuration used throughout the scan.
-/// Produced by merging CLI flags, config file, and built-in defaults.
+/// Effective browser, target, and reporting settings.
 #[derive(Debug, Clone)]
 pub struct Config {
+    /// Single target supplied on the command line.
     pub url: Option<String>,
+    /// Targets read from the batch file in input order.
     pub urls: Vec<String>,
+    /// Base directory for scan artifacts.
     pub output: PathBuf,
+    /// Configured page timeout in seconds.
     pub timeout: u64,
+    /// Whether to print detailed scan progress.
     pub verbose: bool,
+    /// Optional explicit browser executable.
     pub chrome_bin: Option<PathBuf>,
+    /// Requested output format.
     pub format: OutputFormat,
+    /// Additional browser launch arguments in configuration order.
     pub chrome_args: Vec<String>,
+    /// Extra named patterns to compile for this scan.
     pub custom_patterns: Vec<CustomPattern>,
+    /// Built-in pattern names excluded from matching.
     pub ignore_patterns: Vec<String>,
+    /// Stored redaction preference. The bundled report writers emit captured secret values independently.
     pub redact_secrets: bool,
+    /// Stored network-log preference. The bundled report writers choose network output independently.
     pub include_network_log: bool,
 }
 
-/// A user-defined secret detection pattern loaded from `.corrode.toml`.
+/// Named regular expression supplied in the configuration file.
 #[derive(Debug, Clone, Deserialize, serde::Serialize)]
 pub struct CustomPattern {
+    /// Identifier under which matches are grouped.
     pub name: String,
+    /// Regular expression text compiled when the scanner is configured.
     pub pattern: String,
+    /// Severity label supplied by the configuration author.
     pub severity: String,
 }
 
-// --- Config file TOML structures ---
-
-/// Top-level `.corrode.toml` file representation.
-/// All fields are `Option<T>` so partial configs are valid.
+/// Optional TOML sections for scan, browser, pattern, and report settings.
 #[derive(Debug, Clone, Deserialize, Default)]
 pub struct ConfigFile {
+    /// Scan settings supplied by the file.
     pub scan: Option<ScanSection>,
+    /// Browser launch settings supplied by the file.
     pub chrome: Option<ChromeSection>,
+    /// Pattern additions or exclusions supplied by the file.
     pub patterns: Option<PatternsSection>,
+    /// Report preferences supplied by the file.
     pub report: Option<ReportSection>,
 }
 
+/// File overrides for scan timing, console output, and report destinations.
 #[derive(Debug, Clone, Deserialize, Default)]
 pub struct ScanSection {
+    /// Optional page timeout in seconds.
     pub timeout: Option<u64>,
+    /// Optional detailed progress setting.
     pub verbose: Option<bool>,
+    /// Output format name, accepting JSON, Markdown, or both.
     pub format: Option<String>,
+    /// Optional base directory for reports.
     pub output_dir: Option<String>,
 }
 
+/// Browser executable and additional launch arguments.
 #[derive(Debug, Clone, Deserialize, Default)]
 pub struct ChromeSection {
+    /// Path to use when the CLI has no explicit browser executable.
     pub binary: Option<String>,
+    /// Arguments appended to the existing browser argument list.
     pub args: Option<Vec<String>>,
 }
 
+/// Scanner pattern additions and built-in exclusions.
 #[derive(Debug, Clone, Deserialize, Default)]
 pub struct PatternsSection {
+    /// Named regular expressions appended to the scan configuration.
     pub custom_patterns: Option<Vec<CustomPattern>>,
+    /// Built-in pattern names to suppress.
     pub ignore_patterns: Option<Vec<String>>,
 }
 
+/// Report preferences supplied by the configuration file.
 #[derive(Debug, Clone, Deserialize, Default)]
 pub struct ReportSection {
+    /// Requested redaction of secret values.
     pub redact_secrets: Option<bool>,
+    /// Requested inclusion of network logs.
     pub include_network_log: Option<bool>,
 }
 
-/// Load config, preferring `--config`, then `./corrode.toml`, then `~/.config/corrode/config.toml`.
-/// Returns `Ok(None)` if none is found; an explicit path that is missing or invalid is an error.
+/// Reads an explicit TOML file, or searches the current directory before the user config directory.
+/// An explicit missing or invalid file is an error.
+/// ```
+/// # use corrode_scanner::config::load_config_file;
+/// # use std::{fs::{self, File}, io::Write};
+/// # let path = std::env::temp_dir().join(format!("corrode-settings-{}.toml", std::process::id()));
+/// # writeln!(File::create_new(&path).unwrap(), "[scan]\ntimeout = 45").unwrap();
+/// let settings = load_config_file(Some(&path)).unwrap().unwrap();
+/// # assert_eq!(settings.scan.unwrap().timeout, Some(45));
+/// # fs::remove_file(path).unwrap();
+/// ```
 pub fn load_config_file(explicit_path: Option<&Path>) -> Result<Option<ConfigFile>> {
     if let Some(path) = explicit_path {
         let content = fs::read_to_string(path)
@@ -86,7 +131,6 @@ pub fn load_config_file(explicit_path: Option<&Path>) -> Result<Option<ConfigFil
         return Ok(Some(config));
     }
 
-    // Try ./corrode.toml
     let local_path = PathBuf::from("corrode.toml");
     if local_path.is_file() {
         let content =
@@ -96,7 +140,6 @@ pub fn load_config_file(explicit_path: Option<&Path>) -> Result<Option<ConfigFil
         return Ok(Some(config));
     }
 
-    // Try ~/.config/corrode/config.toml
     if let Some(config_dir) = dirs::config_dir() {
         let global_path = config_dir.join("corrode").join("config.toml");
         if global_path.is_file() {
@@ -111,7 +154,6 @@ pub fn load_config_file(explicit_path: Option<&Path>) -> Result<Option<ConfigFil
     Ok(None)
 }
 
-/// Parse an output format string from a config file into an `OutputFormat`.
 fn parse_format(s: &str) -> Option<OutputFormat> {
     match s.to_lowercase().as_str() {
         "json" => Some(OutputFormat::Json),
@@ -121,11 +163,19 @@ fn parse_format(s: &str) -> Option<OutputFormat> {
     }
 }
 
-/// Merge `file` into `config` at priority CLI flags > config file > defaults:
-/// fields already set to a non-default value by the CLI are not overwritten.
+/// Applies file settings to default-valued CLI fields, appends lists, and replaces supplied report flags.
+/// ```
+/// # use clap::Parser;
+/// # use corrode_scanner::{cli::Args, config::{merge_config_file, ConfigFile}};
+/// # let args = Args::parse_from(["corrode", "--no-config", "--url", "https://example.test"]);
+/// # let mut settings = args.into_config().unwrap();
+/// # let overrides: ConfigFile = toml::from_str("[scan]\ntimeout = 45").unwrap();
+/// merge_config_file(&mut settings, &overrides);
+/// # assert_eq!(settings.timeout, 45);
+/// ```
 pub fn merge_config_file(config: &mut Config, file: &ConfigFile) {
+    // Why: The CLI supplies values without tracking whether the caller explicitly chose a default.
     if let Some(scan) = &file.scan {
-        // Only apply config file timeout if CLI used the default (30)
         if let Some(timeout) = scan.timeout {
             if config.timeout == 30 {
                 config.timeout = timeout;
@@ -137,7 +187,6 @@ pub fn merge_config_file(config: &mut Config, file: &ConfigFile) {
             }
         }
         if let Some(format_str) = &scan.format {
-            // Only apply if CLI used the default ("md")
             if config.format == OutputFormat::Md {
                 if let Some(fmt) = parse_format(format_str) {
                     config.format = fmt;
@@ -181,10 +230,7 @@ pub fn merge_config_file(config: &mut Config, file: &ConfigFile) {
     }
 }
 
-/// Parse a URL file (one URL per line, skip blanks and `#` comments).
-/// Validates each URL starts with `http://` or `https://`.
-/// Truncate to at most `max` chars on a char boundary, appending `...` when cut,
-/// so an oversized invalid line can't flood the error message (SEC-006).
+// Holds: The length limit counts Unicode scalar values so truncation leaves a valid string.
 fn truncate_display(value: &str, max: usize) -> String {
     if value.chars().count() <= max {
         return value.to_owned();
@@ -193,6 +239,16 @@ fn truncate_display(value: &str, max: usize) -> String {
     format!("{head}...")
 }
 
+/// Reads trimmed HTTP(S)-prefixed lines in order, ignoring blanks and lines beginning with `#`.
+/// An empty list or a rejected line fails the batch.
+/// ```
+/// # use corrode_scanner::config::parse_url_file;
+/// # use std::{fs::{self, File}, io::Write};
+/// # let path = std::env::temp_dir().join(format!("corrode-targets-{}.txt", std::process::id()));
+/// # writeln!(File::create_new(&path).unwrap(), "# Primary site\nhttps://example.test").unwrap();
+/// assert_eq!(parse_url_file(&path).unwrap(), ["https://example.test"]);
+/// # fs::remove_file(path).unwrap();
+/// ```
 pub fn parse_url_file(path: &Path) -> Result<Vec<String>> {
     let content = fs::read_to_string(path)
         .with_context(|| format!("Failed to read URL file: {}", path.display()))?;

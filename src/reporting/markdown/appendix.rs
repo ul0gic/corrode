@@ -1,3 +1,6 @@
+// Does:  Renders supplementary scan details and recommendations.
+// Holds: An empty recommendation list produces a passive-analysis clean-posture message.
+
 use crate::types::{AssessmentDisposition, ScanResult};
 
 use super::assessment::{secret_disposition, vulnerability_disposition};
@@ -5,7 +8,6 @@ use super::assessment::{secret_disposition, vulnerability_disposition};
 pub(crate) fn render_appendix(result: &ScanResult) -> Vec<String> {
     let mut report = Vec::new();
 
-    // AST findings
     if !result.javascript.ast_findings.is_empty() {
         report.push("---\n## JavaScript AST Findings\n".to_owned());
         for finding in &result.javascript.ast_findings {
@@ -15,7 +17,6 @@ pub(crate) fn render_appendix(result: &ScanResult) -> Vec<String> {
         }
     }
 
-    // Source maps
     if !result.javascript.source_maps.is_empty() {
         report.push("---\n## Source Maps\n".to_owned());
         for map in &result.javascript.source_maps {

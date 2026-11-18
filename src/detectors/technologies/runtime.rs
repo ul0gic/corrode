@@ -1,3 +1,6 @@
+// Does:  Detects technologies and versions from browser runtime and script data.
+// Holds: Runtime React version evidence takes precedence over the CDN fallback.
+
 use chromiumoxide::Page;
 use regex::Regex;
 use serde_json::Value;
@@ -6,7 +9,14 @@ use std::sync::LazyLock;
 use crate::scanner::page_utils;
 use crate::types::TechnologyVersion;
 
-/// Detect technologies from browser runtime window objects.
+/// Detects technologies from browser runtime objects.
+///
+/// ```no_run
+/// # use corrode_scanner::detectors::technologies::runtime::detect;
+/// # async fn run(page: &chromiumoxide::Page) {
+/// let technologies = detect(page).await;
+/// # }
+/// ```
 pub async fn detect(page: &Page) -> Vec<String> {
     page_utils::extract_json::<Vec<String>>(
         page,
@@ -56,7 +66,14 @@ pub async fn detect(page: &Page) -> Vec<String> {
     .await
 }
 
-/// Extract technology versions from runtime APIs and script sources.
+/// Extracts technology versions from browser runtime and script data.
+///
+/// ```no_run
+/// # use corrode_scanner::detectors::technologies::runtime::extract_versions;
+/// # async fn run(page: &chromiumoxide::Page) {
+/// let versions = extract_versions(page, &[]).await;
+/// # }
+/// ```
 pub async fn extract_versions(page: &Page, scripts: &[Value]) -> Vec<TechnologyVersion> {
     let mut versions = Vec::new();
 
@@ -175,6 +192,7 @@ fn detect_nextjs_router(scripts: &[Value]) -> Option<TechnologyVersion> {
     }
 }
 
+// Why: The unwrapped regular expressions are fixed literals.
 #[allow(clippy::unwrap_used)]
 static CDN_VERSION_RE: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(

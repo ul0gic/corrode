@@ -6,7 +6,7 @@ and evidence-backed security findings.
 [![CI](https://github.com/ul0gic/corrode/actions/workflows/ci.yml/badge.svg)](https://github.com/ul0gic/corrode/actions/workflows/ci.yml)
 [![crates.io](https://img.shields.io/crates/v/corrode-scanner.svg)](https://crates.io/crates/corrode-scanner)
 [![Downloads](https://img.shields.io/crates/d/corrode-scanner.svg)](https://crates.io/crates/corrode-scanner)
-[![Rust](https://img.shields.io/badge/rust-1.97.1-orange.svg)](https://www.rust-lang.org/)
+[![Rust](https://img.shields.io/badge/rust-1.100.0-orange.svg)](https://www.rust-lang.org/)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](#license-and-contributing)
 
 Corrode loads a target in headless Chrome and analyzes what the browser can see:
@@ -67,7 +67,7 @@ Prebuilt Linux and macOS binaries are available on the
 | Requirement | Notes |
 |-------------|-------|
 | Chrome or Chromium | Required at runtime; auto-detected from `PATH` and common install locations |
-| Rust 1.97.1 | Required when installing with Cargo or building from source |
+| Rust 1.97.1 or newer | Minimum for Cargo installs and source builds. The repository and CI use Rust 1.100.0. |
 | CMake | Build-time dependency for the Rust TLS backend; unnecessary for prebuilt binaries |
 | Operating system | Linux or macOS |
 

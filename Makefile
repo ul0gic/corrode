@@ -1,5 +1,5 @@
-# Corrode Makefile
-# Simple commands for building and installing
+# Does:  Provides local build, install, and contributor test commands.
+# Holds: The test target uses the workspace lockfile required by PR CI.
 
 .PHONY: help build release install uninstall clean test
 
@@ -56,4 +56,4 @@ clean:
 
 test:
 	@echo "🧪 Running tests..."
-	cargo test
+	cargo test --locked --workspace

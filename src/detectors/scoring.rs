@@ -1,3 +1,6 @@
+// Does:  Assigns confidence to findings in a scan result.
+// Holds: Scoring updates confidence without changing vulnerability severity.
+
 use crate::detectors::confidence::{
     self, EntropySignal, Exploitability, FindingCategory, FindingInputs, Origin, Suppressor,
 };
@@ -7,8 +10,12 @@ use crate::types::{
     Vulnerability,
 };
 
-/// Three-state, not the `bool` `is_first_party` helpers: those default unknown
-/// origins to first-party, erasing the neutral `Unknown` band the scorer needs.
+/// Classifies an artifact relative to the target host.
+///
+/// ```
+/// # use corrode_scanner::detectors::{confidence::Origin, scoring::classify_origin};
+/// assert_eq!(classify_origin("/a", None), Origin::Unknown);
+/// ```
 pub fn classify_origin(url: &str, target_host: Option<&str>) -> Origin {
     let Some(target) = target_host else {
         return Origin::Unknown;
@@ -29,21 +36,23 @@ pub fn classify_origin(url: &str, target_host: Option<&str>) -> Origin {
                 Origin::ThirdParty
             }
         }
-        // A relative/opaque reference (no parseable host) names an in-page or
-        // same-origin artifact far more often than a third-party one.
+        // Why: Relative or opaque references usually identify in-page or same-origin artifacts.
         None => Origin::FirstParty,
     }
 }
 
-/// Whether a URL points at a source-map asset (`.map`), ignoring any query
-/// string and case. Used to pick SourceMap-trust over Network/AST.
 fn is_map_url(url: &str) -> bool {
     let path = url.split(['?', '#']).next().unwrap_or(url);
     path.to_lowercase().ends_with(".map")
 }
 
-/// Score every finding type on the result in place. `None` confidence fields are
-/// filled; nothing else is touched (severity is never read or written).
+/// Assigns confidence to supported findings without changing severity.
+///
+/// ```
+/// # use corrode_scanner::{detectors::scoring::score_all, types::ScanResult};
+/// # let mut result = ScanResult::default();
+/// score_all(&mut result, None);
+/// ```
 pub fn score_all(result: &mut ScanResult, target_host: Option<&str>) {
     for (pattern_name, findings) in &mut result.secrets {
         for finding in findings.iter_mut() {
@@ -122,17 +131,12 @@ fn score_storage_assessment(
     })
 }
 
-// --- SecretFinding -------------------------------------------------------
-
-/// Map a collector's `SecretScanner` source label to the `EvidenceSource` it implies.
 fn evidence_source_for_label(label: &str) -> EvidenceSource {
     if label.starts_with("Window Object:") {
         EvidenceSource::Runtime
     } else if label.starts_with("Source Map:") {
         EvidenceSource::SourceMap
     } else if label.starts_with("Script:") {
-        // An external script URL: observed on the wire, scanned statically. Treat
-        // a remote bundle as Network-trust (it was fetched); inline stays AST.
         EvidenceSource::Network
     } else if label == "localStorage"
         || label == "sessionStorage"
@@ -142,12 +146,10 @@ fn evidence_source_for_label(label: &str) -> EvidenceSource {
     {
         EvidenceSource::Dom
     } else {
-        // "Inline Script", "HTML", and any custom label: static page text.
         EvidenceSource::Ast
     }
 }
 
-/// Whether a matched secret value looks like a placeholder / test value.
 fn looks_like_placeholder(value: &str) -> bool {
     const NEEDLES: [&str; 9] = [
         "example",
@@ -164,13 +166,10 @@ fn looks_like_placeholder(value: &str) -> bool {
     if NEEDLES.iter().any(|n| lower.contains(n)) {
         return true;
     }
-    // An all-zero / single-repeated-char run is a stand-in, not a real secret.
     let trimmed = value.trim();
     trimmed.len() >= 8 && trimmed.chars().all(|c| c == '0')
 }
 
-/// Shannon entropy (bits/char) over the variable portion: fixed prefixes are
-/// stripped first so a long literal prefix can't deflate a real key's entropy.
 fn shannon_entropy(value: &str) -> f64 {
     let stripped = strip_known_prefix(value);
     let chars: Vec<char> = stripped.chars().collect();
@@ -203,8 +202,6 @@ fn strip_known_prefix(value: &str) -> &str {
     value
 }
 
-/// Entropy signal for a secret value, or `NotApplicable` for short tokens where
-/// entropy carries no signal (a 6-char value is too short to judge).
 fn entropy_signal(value: &str) -> EntropySignal {
     let variable = strip_known_prefix(value);
     if variable.len() < 12 {
@@ -220,8 +217,6 @@ fn entropy_signal(value: &str) -> EntropySignal {
     }
 }
 
-/// Exploitability hint from the pattern name (brief §3.7). JWT role distinctions
-/// and key-class (live vs publishable) drive actionability.
 fn exploitability_for_pattern(pattern_name: &str) -> Exploitability {
     match pattern_name {
         "supabase_service_role"
@@ -238,9 +233,6 @@ fn exploitability_for_pattern(pattern_name: &str) -> Exploitability {
         | "stripe_publishable_key"
         | "mapbox_pk"
         | "sentry_dsn" => Exploitability::Benign,
-        // Context-keyword-gated but structureless: a 20-char value that can't be told
-        // apart from a generic identifier. Downgraded so it can't reach High on its own
-        // without corroboration (SEC-002).
         "pagerduty_api_key" => Exploitability::PreconditionUnmet,
         _ => Exploitability::None,
     }
@@ -252,8 +244,6 @@ pub(crate) fn score_secret(
     target_host: Option<&str>,
 ) -> Confidence {
     let source = evidence_source_for_label(&finding.source);
-    // One `SecretFinding` per source label is one signal; its match list does not
-    // multiply that (three regex hits in one bundle are still one corroboration).
     let evidence_count = 1;
 
     let representative = finding.matches.first().map_or("", String::as_str);
@@ -263,8 +253,6 @@ pub(crate) fn score_secret(
         None
     };
 
-    // Origin from the script URL embedded in a `Script: <url>` label, else
-    // first-party (window/storage/inline/HTML are same-origin artifacts).
     let origin = finding
         .source
         .strip_prefix("Script: ")
@@ -286,14 +274,10 @@ pub(crate) fn score_secret(
     confidence::score(&inputs)
 }
 
-// --- Vulnerability -------------------------------------------------------
-
 pub(crate) fn score_vulnerability(vuln: &Vulnerability, target_host: Option<&str>) -> Confidence {
     let inferred = vuln.disposition != AssessmentDisposition::Finding
         || vuln.description.to_lowercase().contains("inferred:");
 
-    // Prefer detector-supplied provenance. Legacy assessments without explicit
-    // evidence fall back to the URL, but absence of a URL no longer means Header.
     let mut sources: Vec<EvidenceSource> = vuln.evidence.iter().map(|e| e.source).collect();
     if sources.is_empty() {
         sources.push(vuln.url.as_deref().map_or(EvidenceSource::Dom, |url| {
@@ -316,7 +300,6 @@ pub(crate) fn score_vulnerability(vuln: &Vulnerability, target_host: Option<&str
     let exploitability = if inferred {
         Exploitability::PreconditionUnmet
     } else {
-        // A concrete observed version match is a met precondition for the CVE.
         Exploitability::PrivilegedNoPrecondition
     };
 
@@ -336,10 +319,7 @@ pub(crate) fn score_vulnerability(vuln: &Vulnerability, target_host: Option<&str
     confidence::score(&inputs)
 }
 
-// --- SourceMapIntel ------------------------------------------------------
-
 pub(crate) fn score_source_map(intel: &SourceMapIntel, target_host: Option<&str>) -> Confidence {
-    // Recovered source is concrete; corroboration scales with distinct artifacts.
     let evidence_count = u32::try_from(intel.recovered_sources.len())
         .unwrap_or(u32::MAX)
         .max(1);
@@ -357,11 +337,7 @@ pub(crate) fn score_source_map(intel: &SourceMapIntel, target_host: Option<&str>
     confidence::score(&inputs)
 }
 
-// --- RouteSurface --------------------------------------------------------
-
 pub(crate) fn score_route(route: &RouteSurface, target_host: Option<&str>) -> Confidence {
-    // Routes recovered from a `.map` source are SourceMap-trust; those parsed from
-    // in-page manifest state are Runtime; everything else is AST (static bundle).
     let source = if is_map_url(&route.source) {
         EvidenceSource::SourceMap
     } else if route.source.starts_with("__") {
@@ -383,10 +359,6 @@ pub(crate) fn score_route(route: &RouteSurface, target_host: Option<&str>) -> Co
     confidence::score(&inputs)
 }
 
-// --- TaintFlow -----------------------------------------------------------
-
-/// Exploitability of a taint flow from its sink shape. HTML/code-execution sinks
-/// fed by a controllable source are actionable; navigation-only is weaker.
 fn taint_exploitability(sink: &str) -> Exploitability {
     let lower = sink.to_lowercase();
     if lower.contains("eval")
@@ -398,13 +370,10 @@ fn taint_exploitability(sink: &str) -> Exploitability {
     {
         Exploitability::PrivilegedNoPrecondition
     } else {
-        // location/iframe/form navigation: actionable only under conditions.
         Exploitability::PreconditionUnmet
     }
 }
 
-/// Scoring-side backstop to the upstream taint allowlist: a text-only sink or a
-/// known auto-escaping step in the path forces the flow to Low.
 fn taint_suppressor(flow: &TaintFlow) -> Option<Suppressor> {
     let sink = flow.sink.to_lowercase();
     if sink.contains("textcontent") || sink.contains("innertext") {
@@ -424,7 +393,6 @@ fn taint_suppressor(flow: &TaintFlow) -> Option<Suppressor> {
 }
 
 pub(crate) fn score_taint_flow(flow: &TaintFlow, target_host: Option<&str>) -> Confidence {
-    // A runtime-observed flow corroborates the static one: two independent signals.
     let evidence_count = if flow.runtime_observed { 2 } else { 1 };
     let mut sources = vec![EvidenceSource::Ast];
     if flow.runtime_observed {
@@ -444,10 +412,7 @@ pub(crate) fn score_taint_flow(flow: &TaintFlow, target_host: Option<&str>) -> C
     confidence::score(&inputs)
 }
 
-// --- Gadget --------------------------------------------------------------
-
 pub(crate) fn score_gadget(gadget: &Gadget, target_host: Option<&str>) -> Confidence {
-    // The free-text exploitability hint drives actionability; parse its keywords.
     let hint = gadget.exploitability_hint.to_lowercase();
     let exploitability = if hint.contains("requires") || hint.contains("strict") {
         Exploitability::PreconditionUnmet
@@ -470,13 +435,10 @@ pub(crate) fn score_gadget(gadget: &Gadget, target_host: Option<&str>) -> Confid
     confidence::score(&inputs)
 }
 
-// --- PostMessageHandler --------------------------------------------------
-
 pub(crate) fn score_post_message(
     handler: &PostMessageHandler,
     target_host: Option<&str>,
 ) -> Confidence {
-    // Origin-check posture drives exploitability; reaching a sink raises it.
     let exploitability = match handler.origin_check.to_lowercase().as_str() {
         "none" => Exploitability::PrivilegedNoPrecondition,
         "weak" => {
@@ -530,7 +492,6 @@ mod tests {
             classify_origin("https://app.example.com/a.js", None),
             Origin::Unknown
         );
-        // A relative reference with no host resolves to first-party.
         assert_eq!(
             classify_origin("/static/a.js", Some("example.com")),
             Origin::FirstParty
@@ -539,7 +500,6 @@ mod tests {
 
     #[test]
     fn high_confidence_runtime_secret() {
-        // service_role in a window object, first-party, high-entropy value.
         let value = "eyJhbGciOiJIUzI1NiJ9.aGVsbG93b3JsZGZvb2JhcnF1eA.sig";
         let f = secret("Window Object: __SUPABASE__", value);
         let c = score_secret("supabase_service_role", &f, Some("example.com"));
@@ -565,10 +525,6 @@ mod tests {
 
     #[test]
     fn pagerduty_api_key_is_downgraded_below_high() {
-        // SEC-002: a structureless 20-char value (the common case is a config literal
-        // in inline page text) can't be told apart from a generic identifier, so it must
-        // not reach High on a static, uncorroborated hit and must score below a
-        // structured secret of the same shape and provenance.
         let value = "u+Abc123456789012345";
         let f = secret("Inline Script", value);
 
@@ -586,7 +542,6 @@ mod tests {
 
     #[test]
     fn low_confidence_static_taint() {
-        // Static, third-party, navigation-only sink => below the Medium floor.
         let flow = TaintFlow {
             source: "location.search".to_owned(),
             sink: "location.assign(...)".to_owned(),

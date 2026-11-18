@@ -1,10 +1,13 @@
-// Regex::new() calls use validated literal patterns that cannot fail at runtime.
+// Does:  Defines detection patterns for authentication credentials.
+// Holds: JWT patterns require three dot-separated token segments.
+
+// Why: The unwrapped regular expressions are fixed literals.
 #![allow(clippy::unwrap_used)]
+// Why: Only the shared registry currently needs the lazy-static allowance.
 #![allow(clippy::non_std_lazy_statics)]
 
 use regex::Regex;
 
-/// Authentication and authorization patterns: JWT, Bearer, Basic Auth, keys.
 pub fn patterns() -> Vec<(&'static str, Regex)> {
     vec![
         (
@@ -31,8 +34,6 @@ pub fn patterns() -> Vec<(&'static str, Regex)> {
             "google_oauth",
             Regex::new(r"[0-9]+-[0-9A-Za-z_]{32}\.apps\.googleusercontent\.com").unwrap(),
         ),
-        // OpenAI API keys: sk- followed by alphanumeric only (no hyphens/underscores).
-        // This naturally excludes Anthropic keys (sk-ant-api03-...) which contain hyphens.
         (
             "openai_api_key",
             Regex::new(r"sk-[A-Za-z0-9]{32,}").unwrap(),

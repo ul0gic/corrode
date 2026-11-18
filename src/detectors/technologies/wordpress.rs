@@ -1,3 +1,6 @@
+// Does:  Identifies WordPress and selects a captured version hint.
+// Holds: Version selection prefers generator evidence over asset consensus.
+
 use std::collections::{HashMap, HashSet};
 use std::sync::LazyLock;
 
@@ -6,18 +9,25 @@ use serde_json::Value;
 
 use crate::types::{ApiCall, MetaTag, TechnologyVersion};
 
+/// Version derived from a generator meta tag.
 pub const META_GENERATOR_METHOD: &str = "wordpress_generator_meta";
+/// Version derived from an observed REST generator.
 pub const REST_GENERATOR_METHOD: &str = "wordpress_observed_rest_generator";
+/// Version derived from asset version consensus.
 pub const ASSET_CONSENSUS_METHOD: &str = "wordpress_asset_version_consensus";
 
+/// `WordPress` detection and selected version evidence.
 #[derive(Debug, Default)]
 pub struct WordPressFingerprint {
+    /// Whether `WordPress` evidence was observed.
     pub detected: bool,
+    /// Selected version hint, when available.
     pub version: Option<TechnologyVersion>,
 }
 
-/// Fingerprint `WordPress` and recover the best version hint from data already
-/// captured during the normal browser scan. This function performs no I/O.
+/// Identifies `WordPress` and selects the strongest captured version hint.
+///
+///     assert!(!corrode_scanner::detectors::technologies::wordpress::detect(&[], &[], &[]).detected);
 pub fn detect(calls: &[ApiCall], meta_tags: &[MetaTag], scripts: &[Value]) -> WordPressFingerprint {
     if let Some(version) = version_from_meta(meta_tags) {
         return WordPressFingerprint {
@@ -123,6 +133,7 @@ fn version_from_asset_consensus(calls: &[ApiCall], scripts: &[Value]) -> Option<
         .map(|(version, _)| version)
 }
 
+// Why: The unwrapped regular expressions are fixed literals.
 #[allow(clippy::unwrap_used)]
 static WORDPRESS_VERSION_RE: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"(?i)\bwordpress\s+([0-9]+(?:\.[0-9]+){1,2})\b").unwrap());

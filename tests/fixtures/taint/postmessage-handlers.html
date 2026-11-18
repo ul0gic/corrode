@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>postMessage Handler Fixture - Corrode QA</title>
+    <!--
+        message-event handlers across the origin-validation spectrum:
+        missing, weak (substring/prefix), and strict (===) checks, plus a
+        wildcard targetOrigin send. Drives the postMessage surface mapper.
+    -->
+</head>
+<body>
+    <div id="out"></div>
+
+    <!-- WEAK: no origin check at all, reaches innerHTML sink -->
+    <script>
+        window.addEventListener("message", function (event) {
+            document.getElementById("out").innerHTML = event.data.html;
+        });
+    </script>
+
+    <!-- WEAK: substring origin check via includes(), reaches a sink -->
+    <script>
+        window.addEventListener("message", function (event) {
+            if (event.origin.includes("example.com")) {
+                document.getElementById("out").innerHTML = event.data.html;
+            }
+        });
+    </script>
+
+    <!-- WEAK: prefix origin check via startsWith() -->
+    <script>
+        window.addEventListener("message", function (e) {
+            if (e.origin.startsWith("https://trusted")) {
+                eval(e.data.code);
+            }
+        });
+    </script>
+
+    <!-- STRICT: exact-match origin check (low risk, should rank below weak) -->
+    <script>
+        window.addEventListener("message", function ({ data, origin }) {
+            if (origin === "https://trusted.example.com") {
+                document.getElementById("out").innerHTML = data.html;
+            }
+        });
+    </script>
+
+    <!-- WILDCARD SEND: postMessage payload delivered to any origin -->
+    <script>
+        function leak() {
+            const secret = localStorage.getItem("token");
+            window.parent.postMessage({ token: secret }, "*");
+        }
+    </script>
+</body>
+</html>

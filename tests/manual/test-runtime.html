@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Test Runtime Detection Fixture - Corrode QA</title>
+    <!--
+        This fixture page tests runtime detection patterns:
+        - Apollo Client GraphQL cache (__APOLLO_STATE__)
+        - Remix context (__remixContext)
+        - Environment variable references
+        - Debug mode indicators
+        - sourceMappingURL comments
+        - Dev server indicators
+    -->
+</head>
+<body>
+    <!-- 1. Apollo Client GraphQL Cache -->
+    <script>
+        window.__APOLLO_STATE__ = {
+            "ROOT_QUERY": {
+                "__typename": "Query",
+                "currentUser": {
+                    "__ref": "User:123"
+                }
+            },
+            "User:123": {
+                "__typename": "User",
+                "id": "123",
+                "email": "admin@example.com",
+                "apiToken": "tok_live_abcdef1234567890"
+            }
+        };
+    </script>
+
+    <!-- 2. Remix Context with loader data -->
+    <script>
+        window.__remixContext = {
+            state: {
+                loaderData: {
+                    "root": {
+                        "user": {
+                            "id": "42",
+                            "name": "Test User",
+                            "sessionToken": "sess_abc123def456"
+                        },
+                        "env": {
+                            "API_URL": "https://api.internal.example.com",
+                            "STRIPE_KEY": "pk_test_abcdefghijklmnopqrst1234"
+                        }
+                    }
+                }
+            },
+            future: {}
+        };
+    </script>
+
+    <!-- 3. Environment variable references in JS bundles -->
+    <script>
+        // CRA-style env var reference
+        var apiUrl = process.env.REACT_APP_API_URL;
+        var apiKey = process.env.REACT_APP_SECRET_KEY;
+
+        // Next.js public env var reference
+        var nextApiUrl = process.env.NEXT_PUBLIC_API_ENDPOINT;
+        var nextAnalytics = process.env.NEXT_PUBLIC_ANALYTICS_ID;
+    </script>
+
+    <!-- 4. Vite env var reference -->
+    <script type="module">
+        const viteApiUrl = import.meta.env.VITE_API_BASE_URL;
+        const viteMode = import.meta.env.VITE_APP_MODE;
+    </script>
+
+    <!-- 5. Debug mode indicators -->
+    <script>
+        // Global debug flag
+        window.__DEBUG__ = true;
+        window.__DEV__ = true;
+    </script>
+
+    <!-- 6. React development build filename (in a simulated script src) -->
+    <script src="https://cdn.example.com/react.development.js"></script>
+    <script src="https://cdn.example.com/react-dom.development.js"></script>
+
+    <!-- 7. Vue.js non-production build -->
+    <script src="https://cdn.example.com/vue.global.js"></script>
+
+    <!-- 8. Webpack HMR indicator -->
+    <script>
+        // Webpack Hot Module Replacement
+        if (module.hot) {
+            module.hot.accept();
+        }
+        var hmrSocket = new WebSocket("/__webpack_hmr");
+    </script>
+
+    <!-- 9. Vite dev server indicator -->
+    <script type="module" src="/@vite/client"></script>
+
+    <!-- 10. sourceMappingURL comments in inline scripts -->
+    <script>
+        // Application bundle
+        var app = function() { return "main"; };
+        //# sourceMappingURL=app.bundle.js.map
+    </script>
+
+    <script>
+        /* Vendor bundle */
+        var vendor = function() { return "vendor"; };
+        /*# sourceMappingURL=vendor.bundle.js.map */
+    </script>
+
+    <!-- 11. Next.js development build indicator -->
+    <script>
+        window.__NEXT_DATA__ = {
+            buildId: "development",
+            page: "/",
+            props: {}
+        };
+    </script>
+
+    <!-- 12. React error overlay (dev-only component) -->
+    <div id="react-error-overlay"></div>
+
+    <!-- 13. Angular debug mode indicators -->
+    <div ng-version="17.3.0"></div>
+
+    <!-- 14. Nuxt data payload -->
+    <script>
+        window.__NUXT_DATA__ = [
+            { state: { user: { name: "test" } } }
+        ];
+    </script>
+
+    <!-- 15. Pinia/Vuex initial state -->
+    <script>
+        window.__pinia = {
+            auth: {
+                user: { id: 1, token: "vuex_session_token_abc123" }
+            }
+        };
+    </script>
+</body>
+</html>

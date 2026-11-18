@@ -1,10 +1,13 @@
-// Regex::new() calls use validated literal patterns that cannot fail at runtime.
+// Does:  Defines detection patterns for version control credentials.
+// Holds: GitHub and GitLab tokens require their respective fixed prefixes.
+
+// Why: The unwrapped regular expressions are fixed literals.
 #![allow(clippy::unwrap_used)]
+// Why: Only the shared registry currently needs the lazy-static allowance.
 #![allow(clippy::non_std_lazy_statics)]
 
 use regex::Regex;
 
-/// Version control system patterns: GitHub, GitLab tokens.
 pub fn patterns() -> Vec<(&'static str, Regex)> {
     vec![
         (

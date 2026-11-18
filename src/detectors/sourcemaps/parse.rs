@@ -1,5 +1,5 @@
-//! Source-map v3 parsing. The VLQ `mappings` field is ignored on purpose — we
-//! recover source paths and text, not line-accurate positions.
+// Does:  Recovers paths and source text from a source map.
+// Holds: Ignore-list indices refer to the positions in the original sources array.
 
 use serde::Deserialize;
 
@@ -17,32 +17,56 @@ struct RawSourceMap {
     ignore_list: Vec<usize>,
 }
 
+/// A source entry paired with its optional embedded text.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RecoveredSource {
+    /// Source path after applying the optional map root.
     pub path: String,
+    /// Embedded source text, absent for missing or empty entries.
     pub content: Option<String>,
     /// Marked third-party by `x_google_ignoreList` (e.g. vendored deps).
     pub ignored: bool,
 }
 
+/// Decoded source entries and the optional symbol-name table.
 #[derive(Debug, Clone)]
 pub struct ParsedSourceMap {
+    /// Entries in map order, omitting null source paths.
     pub sources: Vec<RecoveredSource>,
-    // Parsed for v3-format completeness; no intel path reads the symbol-name
-    // table yet (it feeds a future symbol-recovery pass, not secrets/routes).
+    /// Symbol names in the order supplied by the map.
+    // Why: Map consumers can inspect symbol names even though the scanner only reads source paths.
     #[allow(dead_code)]
     pub names: Vec<String>,
 }
 
 impl ParsedSourceMap {
+    /// Checks whether any entry includes nonempty source text.
+    /// ```
+    /// # use corrode_scanner::detectors::sourcemaps::parse::parse;
+    /// # let map = parse(r#"{"sources":["app.ts"],"sourcesContent":["export {}"]}"#).unwrap();
+    /// assert!(map.has_sources_content());
+    /// ```
     pub fn has_sources_content(&self) -> bool {
         self.sources.iter().any(|s| s.content.is_some())
     }
 
+    /// Returns the retained source paths in map order.
+    /// ```
+    /// # use corrode_scanner::detectors::sourcemaps::parse::parse;
+    /// # let map = parse(r#"{"sourceRoot":"src","sources":[null,"app.ts"]}"#).unwrap();
+    /// assert_eq!(map.source_paths(), ["src/app.ts"]);
+    /// ```
     pub fn source_paths(&self) -> Vec<String> {
         self.sources.iter().map(|s| s.path.clone()).collect()
     }
 
+    /// Yields entries with embedded text whose indices are absent from the map's ignore list.
+    /// ```
+    /// # use corrode_scanner::detectors::sourcemaps::parse::parse;
+    /// # let json = r#"{"sources":["dep.js","app.js"],"sourcesContent":["a","b"],"x_google_ignoreList":[0]}"#;
+    /// # let map = parse(json).unwrap();
+    /// assert_eq!(map.first_party_with_content().next().unwrap().path, "app.js");
+    /// ```
     pub fn first_party_with_content(&self) -> impl Iterator<Item = &RecoveredSource> {
         self.sources
             .iter()
@@ -50,11 +74,13 @@ impl ParsedSourceMap {
     }
 }
 
-/// Errors only on malformed or non-object JSON; missing `sourcesContent` and
-/// out-of-range ignore indices are tolerated.
+/// Parses source paths, optional source text, and ignore-list entries.
+/// ```
+/// # use corrode_scanner::detectors::sourcemaps::parse::parse;
+/// let map = parse(r#"{"sources":["app.ts"]}"#).unwrap();
+/// ```
 pub fn parse(json: &str) -> Result<ParsedSourceMap, serde_json::Error> {
-    // Reject non-objects: serde would otherwise build an all-default struct
-    // from a sequence via struct-from-seq.
+    // Why: Serde can deserialize a JSON sequence into an all-default struct.
     let obj: serde_json::Map<String, serde_json::Value> = serde_json::from_str(json)?;
     let raw: RawSourceMap = serde_json::from_value(serde_json::Value::Object(obj))?;
 
@@ -179,74 +205,5 @@ mod tests {
         let json = r#"{"version":3,"sources":["a.js"],"x_google_ignoreList":[5]}"#;
         let map = parse(json).expect("valid map");
         assert!(!map.sources[0].ignored);
-    }
-
-    // --- Fixture-backed coverage (task 1.12) ---
-
-    const FIXTURE_WITH_CONTENT: &str = r#"{
-  "version": 3,
-  "file": "main.js",
-  "sourceRoot": "",
-  "sources": [
-    "webpack://_N_E/./src/app/page.tsx",
-    "webpack://_N_E/./src/app/admin/[id]/route.ts",
-    "webpack://_N_E/./src/utils/api.ts",
-    "webpack://_N_E/./node_modules/.pnpm/next@14.1.0/dist/client.js"
-  ],
-  "sourcesContent": [
-    "export default function Page() { return null; }",
-    "export async function GET(req) { /* TODO: add authz check */ return Response.json({}); }",
-    "export const API_BASE = '/api/internal';",
-    "module.exports = {};"
-  ],
-  "names": ["Page", "GET", "API_BASE"],
-  "x_google_ignoreList": [3]
-}
-"#;
-    const FIXTURE_FILENAMES_ONLY: &str = r#"{
-  "version": 3,
-  "file": "vendor.js",
-  "sources": [
-    "webpack://app/./src/routes/login.ts",
-    "webpack://app/./src/routes/dashboard/index.ts"
-  ],
-  "names": []
-}
-"#;
-    const FIXTURE_TRUNCATED: &str = r#"{
-  "version": 3,
-  "file": "broken.js",
-  "sources": ["webpack://app/./src/app/page.tsx"],
-  "sourcesContent": ["export default function Page() { ret
-"#;
-
-    #[test]
-    fn fixture_with_content_recovers_source_text_and_skips_vendor() {
-        let map = parse(FIXTURE_WITH_CONTENT).expect("valid fixture map");
-        assert!(map.has_sources_content());
-        // The pnpm vendor entry is flagged via x_google_ignoreList.
-        let first_party: Vec<_> = map.first_party_with_content().collect();
-        assert_eq!(first_party.len(), 3);
-        assert!(first_party
-            .iter()
-            .all(|s| !s.path.contains(".pnpm") && !s.path.contains("node_modules")));
-        assert!(first_party
-            .iter()
-            .any(|s| s.content.as_deref().is_some_and(|c| c.contains("TODO"))));
-    }
-
-    #[test]
-    fn fixture_filenames_only_has_no_source_text() {
-        let map = parse(FIXTURE_FILENAMES_ONLY).expect("valid fixture map");
-        assert!(!map.has_sources_content());
-        assert_eq!(map.source_paths().len(), 2);
-        assert!(map.sources.iter().all(|s| s.content.is_none()));
-    }
-
-    #[test]
-    fn fixture_truncated_map_fails_gracefully() {
-        // A cut-off map must surface as a parse error, never a panic, so the
-        // caller can log-and-skip it.
-        assert!(parse(FIXTURE_TRUNCATED).is_err());
     }
 }

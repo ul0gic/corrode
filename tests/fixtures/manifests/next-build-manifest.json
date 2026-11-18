@@ -1,0 +1,7 @@
+{
+  "/": ["static/chunks/pages/index.js"],
+  "/admin": ["static/chunks/pages/admin.js"],
+  "/admin/billing": ["static/chunks/pages/admin/billing.js"],
+  "/users/[id]": ["static/chunks/pages/users/[id].js"],
+  "/api/login": ["static/chunks/pages/api/login.js"]
+}

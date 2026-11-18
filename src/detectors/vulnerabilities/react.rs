@@ -1,10 +1,12 @@
+// Does:  Detects vulnerable React server component versions in script text.
+// Holds: Findings require a version recognized in the supplied script text.
+
 use regex::Regex;
 use std::sync::LazyLock;
 
 use crate::types::{AssessmentDisposition, EvidenceSource, FindingEvidence, Vulnerability};
 
-// CVE-2025-55182 — RCE (Critical). Next.js's CVE-2025-66478 is a duplicate of
-// this; we emit only the one finding so they aren't double-counted.
+// Why: The unwrapped regular expressions are fixed literals.
 #[allow(clippy::unwrap_used)]
 static RSC_VULN_REGEX: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(
@@ -13,8 +15,7 @@ static RSC_VULN_REGEX: LazyLock<Regex> = LazyLock::new(|| {
     .unwrap()
 });
 
-// CVE-2025-55183 (Source Code Exposure) + CVE-2025-55184/CVE-2025-67779 (DoS)
-// Affected: 19.0.0-19.2.2
+// Why: The unwrapped regular expressions are fixed literals.
 #[allow(clippy::unwrap_used)]
 static RSC_SOURCE_EXPOSURE_REGEX: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(
@@ -23,8 +24,7 @@ static RSC_SOURCE_EXPOSURE_REGEX: LazyLock<Regex> = LazyLock::new(|| {
     .unwrap()
 });
 
-// CVE-2026-23864 (DoS — January 2026)
-// Affected: 19.0.0-19.2.3
+// Why: The unwrapped regular expressions are fixed literals.
 #[allow(clippy::unwrap_used)]
 static RSC_DOS_2026_REGEX: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(
@@ -33,11 +33,12 @@ static RSC_DOS_2026_REGEX: LazyLock<Regex> = LazyLock::new(|| {
     .unwrap()
 });
 
-/// Detect React Server Components vulnerabilities from script content.
+/// Checks script text for vulnerable React server component versions.
+///
+///     assert!(corrode_scanner::detectors::vulnerabilities::react::detect_rsc_vulns("", "").is_empty());
 pub fn detect_rsc_vulns(text: &str, source: &str) -> Vec<Vulnerability> {
     let mut vulns = Vec::new();
 
-    // CVE-2025-55182 — RCE (Critical)
     for cap in RSC_VULN_REGEX.captures_iter(text) {
         let pkg = cap.get(1).map_or("react-server-dom", |m| m.as_str());
         let ver = cap.get(2).map_or("unknown", |m| m.as_str());
@@ -59,7 +60,6 @@ pub fn detect_rsc_vulns(text: &str, source: &str) -> Vec<Vulnerability> {
         });
     }
 
-    // CVE-2025-55183 — Source Code Exposure (Medium)
     for cap in RSC_SOURCE_EXPOSURE_REGEX.captures_iter(text) {
         let ver = cap.get(1).map_or("unknown", |m| m.as_str());
         vulns.push(Vulnerability {
@@ -80,7 +80,6 @@ pub fn detect_rsc_vulns(text: &str, source: &str) -> Vec<Vulnerability> {
         });
     }
 
-    // CVE-2025-55184 / CVE-2025-67779 — DoS (High)
     for cap in RSC_SOURCE_EXPOSURE_REGEX.captures_iter(text) {
         let ver = cap.get(1).map_or("unknown", |m| m.as_str());
         vulns.push(Vulnerability {
@@ -101,7 +100,6 @@ pub fn detect_rsc_vulns(text: &str, source: &str) -> Vec<Vulnerability> {
         });
     }
 
-    // CVE-2026-23864 — DoS (High)
     for cap in RSC_DOS_2026_REGEX.captures_iter(text) {
         let ver = cap.get(1).map_or("unknown", |m| m.as_str());
         vulns.push(Vulnerability {

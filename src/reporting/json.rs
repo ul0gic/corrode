@@ -1,16 +1,22 @@
+// Does:  Writes scan results as versioned JSON.
+// Holds: The schema marker is added to the serialized object.
+
 use anyhow::Result;
 use std::fs;
 use std::path::Path;
 
 use crate::types::ScanResult;
 
-/// Report schema version, emitted as a top-level `schema_version` marker.
-/// Strictly additive: pre-0.4 consumers that ignore unknown keys are unaffected.
 const SCHEMA_VERSION: &str = "0.5";
 
+/// Writes a versioned JSON report, returning serialization or filesystem errors.
+///
+/// ```no_run
+/// # use corrode_scanner::{reporting::json, types::ScanResult};
+/// # let result = ScanResult::default();
+/// json::write(std::path::Path::new("scan_result.json"), &result).unwrap();
+/// ```
 pub fn write(path: &Path, result: &ScanResult) -> Result<()> {
-    // Serialize through a tagged value so the schema marker is additive — no
-    // field is added to the frozen `ScanResult` type to carry it.
     let mut value = serde_json::to_value(result)?;
     if let serde_json::Value::Object(map) = &mut value {
         map.insert(
@@ -79,7 +85,6 @@ mod tests {
         let raw = fs::read_to_string(&path).expect("read json");
         let parsed: serde_json::Value = serde_json::from_str(&raw).expect("parse json");
 
-        // skip_serializing_if = "Option::is_none" keeps pre-0.4 output unchanged.
         assert!(parsed["secrets"]["aws_key"][0].get("confidence").is_none());
     }
 }

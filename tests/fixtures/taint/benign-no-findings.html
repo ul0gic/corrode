@@ -1,0 +1,25 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Benign Page - Corrode QA</title>
+    <!--
+        v0.3.x-style page with no secrets, no taint flows, no source maps, no
+        framework manifests. Regression target: new detectors must yield empty
+        collections here and never crash.
+    -->
+</head>
+<body>
+    <h1>Welcome</h1>
+    <p id="msg"></p>
+    <script>
+        // Only safe sinks, only constant data — no taint source anywhere.
+        document.getElementById("msg").textContent = "Hello, world.";
+        const items = ["a", "b", "c"];
+        items.forEach(function (i) {
+            const li = document.createElement("li");
+            li.textContent = i;
+        });
+    </script>
+</body>
+</html>

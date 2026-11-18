@@ -1,0 +1,14 @@
+{
+  "manifest": {
+    "routes": {
+      "root": { "id": "root", "path": "", "parentId": null },
+      "routes/login": { "id": "routes/login", "path": "login", "parentId": "root" },
+      "routes/dashboard": { "id": "routes/dashboard", "path": "dashboard", "parentId": "root" },
+      "routes/dashboard.settings": {
+        "id": "routes/dashboard.settings",
+        "path": "settings",
+        "parentId": "routes/dashboard"
+      }
+    }
+  }
+}

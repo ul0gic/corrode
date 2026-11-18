@@ -1,3 +1,6 @@
+// Does:  Infers routes and dependency versions from recovered source paths.
+// Holds: Vendor paths can identify packages but cannot contribute application routes.
+
 use std::collections::HashSet;
 use std::sync::LazyLock;
 
@@ -39,6 +42,11 @@ fn file_to_route(rel_after_dir: &str) -> (String, bool) {
     (route, dynamic)
 }
 
+/// Infers route candidates from non-vendor paths and preserves their source-map URL.
+/// ```
+/// # use corrode_scanner::detectors::sourcemaps::intel::extract_routes;
+/// assert_eq!(extract_routes(&["pages/about.tsx".into()], "app.map")[0].path, "/about");
+/// ```
 pub fn extract_routes(source_paths: &[String], map_url: &str) -> Vec<RouteSurface> {
     let mut seen = HashSet::new();
     let mut out = Vec::new();
@@ -51,8 +59,7 @@ pub fn extract_routes(source_paths: &[String], map_url: &str) -> Vec<RouteSurfac
         let lower = path.to_ascii_lowercase();
 
         let segments: Vec<&str> = path.split('/').collect();
-        // Last match, not first: a webpack namespace prefix can be named like a
-        // route dir (`webpack://app/./pages/...`); the real root is the deepest.
+        // Why: A webpack namespace can share a route directory name with the actual route root.
         let route_dir_idx = segments
             .iter()
             .rposition(|seg| ROUTE_DIRS.contains(&seg.to_ascii_lowercase().as_str()));
@@ -85,13 +92,18 @@ pub fn extract_routes(source_paths: &[String], map_url: &str) -> Vec<RouteSurfac
     out
 }
 
-// Name is a single path component so the parent dir (`.pnpm/`) isn't swallowed.
-// pnpm scoped names use `+` as the scope separator, normalized back to `/` below.
+// Why: Pattern compilation uses a fixed expression that every version scan shares.
 #[allow(clippy::unwrap_used)]
 static PKG_VERSION_RE: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r"(@?[a-z0-9][a-z0-9._+-]*)@(\d+\.\d+\.\d+[A-Za-z0-9.+-]*)").unwrap()
 });
 
+/// Collects distinct package and version pairs encoded in dependency paths.
+/// ```
+/// # use corrode_scanner::detectors::sourcemaps::intel::extract_versions;
+/// # let paths = ["node_modules/.pnpm/react@18.2.0/index.js".into()];
+/// assert_eq!(extract_versions(&paths)[0].version.as_deref(), Some("18.2.0"));
+/// ```
 pub fn extract_versions(source_paths: &[String]) -> Vec<TechnologyVersion> {
     let mut seen = HashSet::new();
     let mut out = Vec::new();
@@ -199,49 +211,5 @@ mod tests {
     fn no_versions_from_first_party_paths() {
         let paths = vec!["src/app@home.ts".to_owned()];
         assert!(extract_versions(&paths).is_empty());
-    }
-
-    // --- Fixture-backed coverage (task 1.12) ---
-
-    const FIXTURE_WITH_CONTENT: &str = r#"{
-  "version": 3,
-  "file": "main.js",
-  "sourceRoot": "",
-  "sources": [
-    "webpack://_N_E/./src/app/page.tsx",
-    "webpack://_N_E/./src/app/admin/[id]/route.ts",
-    "webpack://_N_E/./src/utils/api.ts",
-    "webpack://_N_E/./node_modules/.pnpm/next@14.1.0/dist/client.js"
-  ],
-  "sourcesContent": [
-    "export default function Page() { return null; }",
-    "export async function GET(req) { /* TODO: add authz check */ return Response.json({}); }",
-    "export const API_BASE = '/api/internal';",
-    "module.exports = {};"
-  ],
-  "names": ["Page", "GET", "API_BASE"],
-  "x_google_ignoreList": [3]
-}
-"#;
-
-    #[test]
-    fn fixture_recovers_routes_and_versions_end_to_end() {
-        let parsed = super::super::parse::parse(FIXTURE_WITH_CONTENT).expect("valid fixture map");
-        let paths = parsed.source_paths();
-
-        let routes = extract_routes(&paths, "https://app.example.com/main.js.map");
-        let by_path: std::collections::HashMap<_, _> =
-            routes.iter().map(|r| (r.path.as_str(), r)).collect();
-        // src/app/page.tsx -> /page; src/app/admin/[id]/route.ts -> dynamic.
-        assert_eq!(by_path["/page"].kind, "route");
-        assert!(by_path["/admin/[id]/route"].dynamic);
-        // src/utils/api.ts sits outside a route tree and must not appear.
-        assert!(!routes.iter().any(|r| r.path.contains("utils")));
-
-        // The pnpm vendor path yields a recovered package version.
-        let versions = extract_versions(&paths);
-        assert!(versions
-            .iter()
-            .any(|v| v.name == "next" && v.version.as_deref() == Some("14.1.0")));
     }
 }

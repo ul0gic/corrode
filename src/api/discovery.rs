@@ -1,6 +1,9 @@
-// Regex::new() calls in lazy_static! use validated literal patterns that cannot fail at runtime.
-// non_std_lazy_statics: lazy_static used consistently; migration to LazyLock deferred to restructuring.
+// Does:  Finds endpoint candidates in JavaScript text.
+// Holds: A candidate URL appears at most once per extraction.
+
+// Why: Literal regex patterns are compiled with unwrap.
 #![allow(clippy::unwrap_used)]
+// Why: Regex collections use the lazy_static macro.
 #![allow(clippy::non_std_lazy_statics)]
 
 use crate::types::DiscoveredEndpoint;
@@ -9,37 +12,21 @@ use regex::Regex;
 use std::collections::HashSet;
 
 lazy_static! {
-    // Patterns to find API endpoints in JavaScript
     static ref API_PATTERNS: Vec<Regex> = vec![
-        // fetch() calls
         Regex::new(r#"fetch\s*\(\s*[`'"]([^`'"]+)[`'"]"#).unwrap(),
         Regex::new(r"fetch\s*\(\s*`([^`]+)`").unwrap(),
-
-        // axios calls
         Regex::new(r#"axios\.(get|post|put|delete|patch)\s*\(\s*[`'"]([^`'"]+)[`'"]"#).unwrap(),
         Regex::new(r#"axios\s*\(\s*\{\s*url\s*:\s*[`'"]([^`'"]+)[`'"]"#).unwrap(),
-
-        // XMLHttpRequest
         Regex::new(r#"\.open\s*\(\s*[`'"](\w+)[`'"]\s*,\s*[`'"]([^`'"]+)[`'"]"#).unwrap(),
-
-        // jQuery ajax
         Regex::new(r#"\$\.ajax\s*\(\s*\{\s*url\s*:\s*[`'"]([^`'"]+)[`'"]"#).unwrap(),
         Regex::new(r#"\$\.(get|post)\s*\(\s*[`'"]([^`'"]+)[`'"]"#).unwrap(),
-
-        // API base URLs and endpoints
         Regex::new(r#"[`'"]https?://[^`'"]+/api/[^`'"]+[`'"]"#).unwrap(),
         Regex::new(r"/api/[a-zA-Z0-9/_\-\{\}]+").unwrap(),
         Regex::new(r"/v\d+/[a-zA-Z0-9/_\-\{\}]+").unwrap(),
-
-        // GraphQL
         Regex::new(r#"[`'"]https?://[^`'"]+/graphql[`'"]"#).unwrap(),
-
-        // Common REST patterns
         Regex::new(r#"[`'"]/users/\{?[a-zA-Z0-9_]+\}?[`'"]"#).unwrap(),
         Regex::new(r#"[`'"]/api/\w+/\{?[a-zA-Z0-9_]+\}?[`'"]"#).unwrap(),
     ];
-
-    // Patterns to find URL parameters
     static ref PARAM_PATTERNS: Vec<Regex> = vec![
         Regex::new(r"\{(\w+)\}").unwrap(),
         Regex::new(r"\$\{(\w+)\}").unwrap(),
@@ -47,13 +34,18 @@ lazy_static! {
     ];
 }
 
+/// Extracts distinct endpoint candidates from JavaScript using pattern matches.
+///
+/// ```
+/// # use corrode_scanner::api::discovery::extract_api_endpoints;
+/// assert_eq!(extract_api_endpoints("fetch('/api/users')", "app.js")[0].url, "/api/users");
+/// ```
 pub fn extract_api_endpoints(code: &str, source: &str) -> Vec<DiscoveredEndpoint> {
     let mut endpoints = HashSet::new();
     let mut results = Vec::new();
 
     for pattern in API_PATTERNS.iter() {
         for cap in pattern.captures_iter(code) {
-            // Try to extract URL from different capture groups
             let url = if let Some(url) = cap.get(1) {
                 url.as_str()
             } else if let Some(url) = cap.get(2) {
@@ -62,18 +54,15 @@ pub fn extract_api_endpoints(code: &str, source: &str) -> Vec<DiscoveredEndpoint
                 continue;
             };
 
-            // Skip if not an endpoint-like string
             if url.len() < 4 || (!url.starts_with('/') && !url.starts_with("http")) {
                 continue;
             }
 
-            // Deduplicate
             if endpoints.contains(url) {
                 continue;
             }
             endpoints.insert(url.to_owned());
 
-            // Extract HTTP method if present
             let method = if let Some(method_cap) = cap.get(0) {
                 let text = method_cap.as_str().to_lowercase();
                 if text.contains("post") {
@@ -91,7 +80,6 @@ pub fn extract_api_endpoints(code: &str, source: &str) -> Vec<DiscoveredEndpoint
                 "GET"
             };
 
-            // Extract parameters
             let mut parameters = Vec::new();
             for param_pattern in PARAM_PATTERNS.iter() {
                 for param_cap in param_pattern.captures_iter(url) {

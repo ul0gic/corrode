@@ -1,3 +1,6 @@
+// Does:  Writes the assembled Markdown scan report.
+// Holds: Report sections are assembled in a fixed order.
+
 mod appendix;
 mod assessment;
 mod findings;
@@ -6,6 +9,7 @@ mod leads;
 mod network;
 mod security;
 mod sourcemaps;
+/// Confidence and summary formatting.
 pub mod summary;
 mod taint;
 mod technologies;
@@ -16,10 +20,16 @@ use std::path::Path;
 
 use crate::types::ScanResult;
 
+/// Writes report and evidence Markdown files under the result URL’s host directory.
+///
+/// ```no_run
+/// # use corrode_scanner::{reporting::markdown, types::ScanResult};
+/// # let result = ScanResult::default();
+/// markdown::write(&result, std::path::Path::new("reports")).unwrap();
+/// ```
 pub fn write(result: &ScanResult, base_output_dir: &Path) -> Result<()> {
     let mut report = report_header(result, "Corrode Security Scan Report");
 
-    // Decision-focused report: actionable work first, then leads and inventory.
     report.extend(summary::render_summary(result));
     report.extend(findings::render_findings(result));
     report.extend(findings::render_lead_assessments(result));
@@ -50,7 +60,6 @@ pub fn write(result: &ScanResult, base_output_dir: &Path) -> Result<()> {
     evidence.extend(taint::render_taint(result));
     evidence.extend(appendix::render_appendix(result));
 
-    // Write to file
     let domain = url::Url::parse(&result.url)
         .ok()
         .and_then(|u| u.host_str().map(std::borrow::ToOwned::to_owned))
@@ -86,8 +95,6 @@ mod e2e_tests {
         TaintFlow, Vulnerability,
     };
 
-    /// A representative result spanning every scored finding type, used to
-    /// exercise the full report render in the e2e tests.
     fn fixture() -> ScanResult {
         let mut result = ScanResult {
             url: "https://app.example.com".to_owned(),
@@ -95,7 +102,6 @@ mod e2e_tests {
             ..ScanResult::default()
         };
 
-        // Strong: service_role JWT seen in a window object, high-entropy value.
         let jwt = "eyJhbGciOiJIUzI1NiJ9.aGVsbG93b3JsZGZvb2JhcnF1eA.signaturepart";
         result.secrets.insert(
             "supabase_service_role".to_owned(),
@@ -105,7 +111,6 @@ mod e2e_tests {
                 confidence: None,
             }],
         );
-        // Suppressed placeholder.
         result.secrets.insert(
             "aws_key".to_owned(),
             vec![SecretFinding {
@@ -141,7 +146,6 @@ mod e2e_tests {
             confidence: None,
         });
 
-        // Static taint flow (third-party, navigation-only) → low.
         result.taint_flows.push(TaintFlow {
             source: "location.search".to_owned(),
             sink: "location.assign(...)".to_owned(),
@@ -151,7 +155,6 @@ mod e2e_tests {
             runtime_observed: false,
             confidence: None,
         });
-        // Runtime-observed taint flow (first-party, HTML sink) → high.
         result.taint_flows.push(TaintFlow {
             source: "location.hash".to_owned(),
             sink: "innerHTML".to_owned(),
@@ -168,7 +171,6 @@ mod e2e_tests {
             exploitability_hint: "CSP allows unsafe-inline near the sink".to_owned(),
             confidence: None,
         });
-        // Strict-origin postMessage → low.
         result.post_message_handlers.push(PostMessageHandler {
             script_url: "https://app.example.com/main.js".to_owned(),
             location: "main.js:3:1".to_owned(),
@@ -191,12 +193,8 @@ mod e2e_tests {
         md.extend(super::taint::render_taint(&result));
         let md = md.join("\n");
 
-        // Severity × confidence appears on findings.
         assert!(md.contains("severity / High confidence"));
-        // Confidence columns appear in the taint and source-map tables.
         assert!(md.contains("| Confidence |"));
-        // The high-confidence runtime flow outranks the low static one: its row
-        // (innerHTML) must appear before the location.assign row.
         let high = md.find("innerHTML").expect("high flow present");
         let low = md.find("location.assign").expect("low flow present");
         assert!(high < low, "high-confidence flow should sort first");
@@ -216,7 +214,6 @@ mod e2e_tests {
         let parsed: serde_json::Value = serde_json::from_str(&raw).expect("parse json");
 
         assert_eq!(parsed["schema_version"], "0.5");
-        // The strong secret scored High; the placeholder was suppressed to Low.
         assert_eq!(
             parsed["secrets"]["supabase_service_role"][0]["confidence"]["level"],
             "high"
@@ -225,7 +222,6 @@ mod e2e_tests {
             parsed["secrets"]["aws_key"][0]["confidence"]["level"],
             "low"
         );
-        // Every collection carries a confidence object once scored.
         assert!(parsed["taint_flows"][0]["confidence"]["level"].is_string());
         assert!(parsed["post_message_handlers"][0]["confidence"]["level"].is_string());
     }

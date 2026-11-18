@@ -1,3 +1,6 @@
+// Does:  Renders network traffic summaries and request tables.
+// Holds: Header lookup ignores case.
+
 use crate::types::{ApiCall, ScanResult};
 
 use super::summary::truncate_middle;
@@ -22,6 +25,7 @@ fn header_hints(headers: &std::collections::HashMap<String, String>) -> String {
     }
 }
 
+// Why: URL matching intentionally uses the recorded case-sensitive text.
 #[allow(clippy::case_sensitive_file_extension_comparisons)]
 fn is_api_like(url: &str) -> bool {
     url.contains("/api/")
@@ -80,7 +84,6 @@ fn header_value<'a>(
         .map(|(_, v)| v.as_str())
 }
 
-/// Extract the domain from a URL for grouping.
 fn extract_domain(url_str: &str) -> Option<String> {
     url::Url::parse(url_str)
         .ok()
@@ -96,7 +99,6 @@ pub(crate) fn render_network(result: &ScanResult) -> Vec<String> {
 
     report.push("---\n## Network Activity\n".to_owned());
 
-    // Summary stats
     report.push(format!(
         "- Total Requests: {}",
         result.network.total_requests
@@ -111,7 +113,6 @@ pub(crate) fn render_network(result: &ScanResult) -> Vec<String> {
     ));
     report.push(String::new());
 
-    // First-party vs third-party breakdown
     let target_domain = extract_domain(&result.url);
     let first_party: Vec<&ApiCall> = result
         .network
@@ -136,7 +137,6 @@ pub(crate) fn render_network(result: &ScanResult) -> Vec<String> {
         third_party.len()
     ));
 
-    // External domains contacted
     if !third_party.is_empty() {
         let mut domains: Vec<String> = third_party
             .iter()
@@ -160,7 +160,6 @@ pub(crate) fn render_network(result: &ScanResult) -> Vec<String> {
         }
     }
 
-    // Key requests table (API-like first, then general)
     let mut calls: Vec<ApiCall> = result
         .network
         .calls

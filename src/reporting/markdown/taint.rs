@@ -1,10 +1,10 @@
-//! Not yet wired into `write()` — the live wiring lands at Gate 2.
+// Does:  Renders taint flows, gadgets, and message handlers.
+// Holds: An empty set of these observations produces no section.
 
 use crate::types::{Confidence, ScanResult};
 
 use super::summary::{confidence_label, confidence_sort_key};
 
-/// Confidence cell for a table, e.g. `Medium`. Empty when unscored (back-compat).
 fn confidence_cell(confidence: Option<&Confidence>) -> String {
     confidence.map_or_else(String::new, |c| {
         confidence_label(c.level)
@@ -116,7 +116,7 @@ mod tests {
 
     #[test]
     fn empty_input_renders_nothing() {
-        assert!(render_taint(&base()).is_empty());
+        assert_eq!(render_taint(&base()), Vec::<String>::new());
     }
 
     #[test]
@@ -170,7 +170,6 @@ mod tests {
         let md = render_taint(&result).join("\n");
         assert!(md.contains("### postMessage Handlers"));
         assert!(md.contains("weak"));
-        // reaches_sink true rendered as yes.
         assert!(md.contains("| yes |"));
     }
 
@@ -188,10 +187,8 @@ mod tests {
         });
         let md = render_taint(&result).join("\n");
         assert!(md.contains("### Taint Flows"));
-        // No gadget or handler sub-sections when those collections are empty.
         assert!(!md.contains("### Gadget Inventory"));
         assert!(!md.contains("### postMessage Handlers"));
-        // Static flow rendered as such.
         assert!(md.contains("static"));
     }
 }

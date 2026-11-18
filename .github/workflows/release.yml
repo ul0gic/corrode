@@ -2,14 +2,14 @@ name: Release
 
 on:
   push:
-    tags:
-      - "v*"
+    branches: [main]
+    paths: [Cargo.toml]
 
 permissions:
   contents: read
 
 concurrency:
-  group: release-${{ github.ref }}
+  group: release-${{ github.sha }}
   cancel-in-progress: false
 
 env:
@@ -17,7 +17,30 @@ env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 jobs:
+  version:
+    name: Check release version
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.compare.outputs.version }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Compare Cargo versions across the merge
+        id: compare
+        env:
+          BEFORE: ${{ github.event.before }}
+        run: |
+          version=$(python3 .github/scripts/release-version.py "$BEFORE" "$GITHUB_SHA")
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
   build:
+    needs: version
+    if: needs.version.outputs.version != ''
+    env:
+      TAG: v${{ needs.version.outputs.version }}
     name: Build (${{ matrix.target }})
     runs-on: ${{ matrix.os }}
     timeout-minutes: 30
@@ -45,7 +68,7 @@ jobs:
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # pinned commit (no release tags)
         with:
-          toolchain: 1.97.1
+          toolchain: 1.100.0
           targets: ${{ matrix.target }}
 
       - name: Cache Cargo
@@ -60,26 +83,26 @@ jobs:
             ${{ runner.os }}-${{ matrix.target }}-cargo-release-
 
       - name: Build release binary
-        run: cargo build --release --target ${{ matrix.target }}
+        run: cargo build --locked --release --target ${{ matrix.target }}
 
       - name: Create archive
         run: |
-          cd target/${{ matrix.target }}/release
-          tar czf ../../../corrode-${{ github.ref_name }}-${{ matrix.target }}.tar.gz ${{ matrix.binary }}
-          cd ../../..
-          shasum -a 256 corrode-${{ github.ref_name }}-${{ matrix.target }}.tar.gz > corrode-${{ github.ref_name }}-${{ matrix.target }}.tar.gz.sha256
+          archive="corrode-${TAG}-${{ matrix.target }}.tar.gz"
+          tar -czf "$archive" -C "target/${{ matrix.target }}/release" "${{ matrix.binary }}"
+          shasum -a 256 "$archive" > "$archive.sha256"
 
       - name: Upload artifact
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: corrode-${{ matrix.target }}
+          if-no-files-found: error
           path: |
-            corrode-${{ github.ref_name }}-${{ matrix.target }}.tar.gz
-            corrode-${{ github.ref_name }}-${{ matrix.target }}.tar.gz.sha256
+            corrode-${{ env.TAG }}-${{ matrix.target }}.tar.gz
+            corrode-${{ env.TAG }}-${{ matrix.target }}.tar.gz.sha256
 
   release:
     name: Create GitHub Release
-    needs: build
+    needs: [version, build]
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:
@@ -88,7 +111,23 @@ jobs:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          persist-credentials: false
+          fetch-depth: 0
+          persist-credentials: true
+
+      - name: Tag the merged commit
+        env:
+          TAG: v${{ needs.version.outputs.version }}
+        run: |
+          ref="refs/tags/$TAG"
+          if git show-ref --verify --quiet "$ref"; then
+            existing=$(git rev-parse "$ref^{commit}")
+            if [[ "$existing" != "$GITHUB_SHA" ]]; then
+              echo "::error::$TAG already points to $existing"
+              exit 1
+            fi
+          else
+            git push origin "$GITHUB_SHA:$ref"
+          fi
 
       - name: Download all artifacts
         uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
@@ -96,16 +135,19 @@ jobs:
           merge-multiple: true
 
       - name: Create release
-        uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64 # v3.0.3
+        uses: softprops/action-gh-release@8a0cd651e5b2365bd640854a3fa5dfc70e4875f3 # v3.0.4
         with:
+          tag_name: v${{ needs.version.outputs.version }}
+          target_commitish: ${{ github.sha }}
           generate_release_notes: true
+          fail_on_unmatched_files: true
           files: |
             corrode-*.tar.gz
             corrode-*.sha256
 
   publish:
     name: Publish to crates.io
-    needs: build
+    needs: [version, release]
     runs-on: ubuntu-latest
     timeout-minutes: 20
     permissions:
@@ -119,9 +161,17 @@ jobs:
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # pinned commit (no release tags)
         with:
-          toolchain: 1.97.1
+          toolchain: 1.100.0
 
       - name: Publish to crates.io
-        run: cargo publish
+        run: |
+          curl --fail --silent --show-error --retry 3 https://index.crates.io/co/rr/corrode-scanner -o "$RUNNER_TEMP/crate-index"
+          published=$(jq -cs --arg version "$VERSION" 'any(.[]; .vers == $version)' "$RUNNER_TEMP/crate-index")
+          if [[ "$published" == true ]]; then
+            echo "corrode-scanner $VERSION is already published."
+          else
+            cargo publish --locked
+          fi
         env:
+          VERSION: ${{ needs.version.outputs.version }}
           CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}

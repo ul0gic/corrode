@@ -1,13 +1,13 @@
+// Does:  Classifies expressions that can introduce tainted values.
+// Holds: Unrecognized sources do not produce a match.
+
 use swc_ecma_ast::{Callee, Expr, MemberExpr, MemberProp};
 
-/// A recognized taint source with its stable human-readable label.
 #[derive(Debug, Clone)]
 pub(crate) struct SourceMatch {
     pub label: String,
 }
 
-/// Classify an expression as a taint source (member chains, storage getters,
-/// `new URLSearchParams(...)`); `None` otherwise — the conservative low-FP default.
 pub(crate) fn classify_expr(expr: &Expr) -> Option<SourceMatch> {
     match expr {
         Expr::Member(member) => classify_member(member),
@@ -18,8 +18,6 @@ pub(crate) fn classify_expr(expr: &Expr) -> Option<SourceMatch> {
     }
 }
 
-/// Recognize `new URLSearchParams(...)` and `new URL(...)` constructors as
-/// URL-derived sources.
 fn classify_new(callee: &Expr) -> Option<SourceMatch> {
     let name = ident_name(callee)?;
     match name {
@@ -30,8 +28,6 @@ fn classify_new(callee: &Expr) -> Option<SourceMatch> {
     }
 }
 
-/// Recognize call-shaped sources: `localStorage.getItem(...)`,
-/// `searchParams.get(...)`, `new URL(...).searchParams.get(...)`.
 fn classify_call(call: &swc_ecma_ast::CallExpr) -> Option<SourceMatch> {
     let Callee::Expr(callee) = &call.callee else {
         return None;
@@ -46,8 +42,8 @@ fn classify_call(call: &swc_ecma_ast::CallExpr) -> Option<SourceMatch> {
         (Some("localStorage" | "sessionStorage"), "getItem") => Some(SourceMatch {
             label: format!("{}.getItem(...)", object?),
         }),
-        // `.get(...)` on a URLSearchParams-ish receiver. We only accept it when
-        // the receiver name hints at search params, to avoid map/cache `.get`.
+
+        // Why: The receiver hint avoids classifying generic map and cache lookups as URL sources.
         (Some(obj), "get") if is_search_params_name(obj) => Some(SourceMatch {
             label: format!("{obj}.get(...)"),
         }),
@@ -55,8 +51,6 @@ fn classify_call(call: &swc_ecma_ast::CallExpr) -> Option<SourceMatch> {
     }
 }
 
-/// Recognize member-chain sources: `location.*`, `document.*`, `window.name`,
-/// `event.data`, `.searchParams`.
 fn classify_member(member: &MemberExpr) -> Option<SourceMatch> {
     let prop = member_prop(&member.prop)?;
     let object = root_object_name(&member.obj);
@@ -77,8 +71,7 @@ fn classify_member(member: &MemberExpr) -> Option<SourceMatch> {
         (Some("window" | "self" | "top"), "name") => Some(SourceMatch {
             label: "window.name".to_owned(),
         }),
-        // `event.data` / `e.data` / `msg.data`: only treated as a source when
-        // the visitor is inside a `message`-event handler (see visitor.rs).
+
         (_, "searchParams") => Some(SourceMatch {
             label: "location.searchParams".to_owned(),
         }),
@@ -86,8 +79,6 @@ fn classify_member(member: &MemberExpr) -> Option<SourceMatch> {
     }
 }
 
-/// Recognize a bare `location` / `document.location` reference used directly
-/// (e.g. assigned into a variable). Bare `location` is URL-tainted.
 pub(crate) fn classify_bare_ident(expr: &Expr) -> Option<SourceMatch> {
     match ident_name(expr)? {
         "location" => Some(SourceMatch {
@@ -97,8 +88,6 @@ pub(crate) fn classify_bare_ident(expr: &Expr) -> Option<SourceMatch> {
     }
 }
 
-/// `event.data` within a known message handler. Called only inside an established
-/// message listener, so the receiver-name heuristic can stay broad safely.
 pub(crate) fn classify_message_data(member: &MemberExpr, event_param: &str) -> Option<SourceMatch> {
     let prop = member_prop(&member.prop)?;
     let object = root_object_name(&member.obj);
@@ -115,8 +104,6 @@ fn is_search_params_name(name: &str) -> bool {
     lower.contains("param") || lower.contains("query") || lower == "search"
 }
 
-/// The leftmost identifier of a (possibly nested) member chain.
-/// `a.b.c` -> `a`. Used to anchor a source on its root object.
 fn root_object_name(obj: &Expr) -> Option<String> {
     match obj {
         Expr::Ident(ident) => Some(ident.sym.to_string()),
@@ -177,7 +164,6 @@ mod tests {
 
     #[test]
     fn plain_map_get_is_not_a_source() {
-        // A generic `.get` on a non-param receiver must not taint — low FP.
         assert!(classify("cache.get('x')").is_none());
         assert!(classify("userMap.get(id)").is_none());
     }

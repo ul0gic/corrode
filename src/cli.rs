@@ -1,9 +1,13 @@
+// Does:  Resolves command-line arguments into scan settings.
+// Holds: Batch input and explicit configuration files are read before browser startup.
+
 use anyhow::{bail, Result};
 use clap::Parser;
 use std::path::PathBuf;
 
 use crate::config::{self, Config, OutputFormat};
 
+/// Command-line options for a single target or a URL file.
 #[derive(Parser, Debug)]
 #[command(name = "corrode")]
 #[command(about = "High-performance security scanner for exposed credentials and vulnerabilities", long_about = None)]
@@ -96,13 +100,18 @@ pub struct Args {
 }
 
 impl Args {
+    /// Resolves batch targets and overlays file settings unless `--no-config` is present.
+    /// ```
+    /// # use clap::Parser;
+    /// # use corrode_scanner::cli::Args;
+    /// # let args = Args::parse_from(["corrode", "--no-config", "--url", "https://example.test"]);
+    /// assert_eq!(args.into_config().unwrap().url.as_deref(), Some("https://example.test"));
+    /// ```
     pub fn into_config(self) -> Result<Config> {
-        // Validate: at least one of --url or --file must be provided
         if self.url.is_none() && self.file.is_none() {
             bail!("Either --url or --file must be provided");
         }
 
-        // Parse URL file if --file was given
         let urls = if let Some(ref file_path) = self.file {
             config::parse_url_file(file_path)?
         } else {
@@ -124,7 +133,6 @@ impl Args {
             include_network_log: false,
         };
 
-        // Load and merge config file unless --no-config
         if !self.no_config {
             let config_file = config::load_config_file(self.config_path.as_deref())?;
             if let Some(file_config) = &config_file {
@@ -136,6 +144,11 @@ impl Args {
     }
 }
 
+/// Parses the process arguments and resolves the scan settings.
+/// ```no_run
+/// corrode_scanner::cli::parse()?;
+/// # Ok::<(), anyhow::Error>(())
+/// ```
 pub fn parse() -> Result<Config> {
     Args::parse().into_config()
 }

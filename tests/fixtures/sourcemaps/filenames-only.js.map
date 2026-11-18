@@ -1,0 +1,9 @@
+{
+  "version": 3,
+  "file": "vendor.js",
+  "sources": [
+    "webpack://app/./src/routes/login.ts",
+    "webpack://app/./src/routes/dashboard/index.ts"
+  ],
+  "names": []
+}

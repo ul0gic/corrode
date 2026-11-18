@@ -1,3 +1,6 @@
+// Does:  Classifies browser-visible session and storage evidence.
+// Holds: Analysis does not issue requests or validate credentials.
+
 use std::collections::{HashMap, HashSet};
 
 use base64::{engine::general_purpose, Engine as _};
@@ -26,7 +29,6 @@ struct Classification {
     claims: Option<JwtClaims>,
 }
 
-/// Analyze browser-visible material without issuing requests or validating credentials.
 pub(crate) fn analyze(
     local_storage: &HashMap<String, String>,
     session_storage: &HashMap<String, String>,

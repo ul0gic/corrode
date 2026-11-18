@@ -1,8 +1,16 @@
+// Does:  Calculates and renders scan summary metrics.
+// Holds: Only findings contribute to the headline severity counts.
+
 use crate::types::{AssessmentDisposition, Confidence, ConfidenceLevel, ScanResult};
 
 use super::assessment::{secret_disposition, vulnerability_disposition, wordpress_lead};
 
-/// Human label for a confidence level, e.g. `Medium confidence`.
+/// Formats a confidence band as a human-readable label.
+///
+/// ```
+/// # use corrode_scanner::{reporting::markdown::summary::confidence_label, types::ConfidenceLevel};
+/// assert_eq!(confidence_label(ConfidenceLevel::Low), "Low confidence");
+/// ```
 pub fn confidence_label(level: ConfidenceLevel) -> &'static str {
     match level {
         ConfidenceLevel::High => "High confidence",
@@ -11,8 +19,12 @@ pub fn confidence_label(level: ConfidenceLevel) -> &'static str {
     }
 }
 
-/// Render `Severity / Confidence` when a finding is scored, else just the
-/// severity (back-compat: an unscored `None` confidence renders nothing extra).
+/// Formats a severity label with confidence when a score is available.
+///
+/// ```
+/// # use corrode_scanner::reporting::markdown::summary::severity_confidence;
+/// assert_eq!(severity_confidence("High", None), "High severity");
+/// ```
 pub fn severity_confidence(severity: &str, confidence: Option<&Confidence>) -> String {
     match confidence {
         Some(c) => format!("{severity} severity / {}", confidence_label(c.level)),
@@ -20,8 +32,6 @@ pub fn severity_confidence(severity: &str, confidence: Option<&Confidence>) -> S
     }
 }
 
-/// Sort key for ordering findings by confidence within a severity band, highest
-/// first. Unscored findings sort last. The `u8` score disambiguates same-level.
 pub(crate) fn confidence_sort_key(confidence: Option<&Confidence>) -> (u8, u8) {
     match confidence {
         Some(c) => {
@@ -65,7 +75,6 @@ pub(super) fn truncate_middle(value: &str, max_len: usize) -> String {
     format!("{start}...{end}")
 }
 
-/// Redact a secret value, showing only the first and last 4 characters.
 pub(super) fn redact_value(value: &str) -> String {
     if value.len() <= 12 {
         return "*".repeat(value.len());
@@ -84,10 +93,8 @@ pub(super) fn redact_value(value: &str) -> String {
     format!("{prefix}{}...{suffix}", "*".repeat(hidden.min(20)))
 }
 
-/// Map a secret pattern name to a severity label.
 pub(crate) fn secret_severity(pattern_name: &str) -> &'static str {
     match pattern_name {
-        // Critical
         "supabase_service_role"
         | "supabase_secret"
         | "aws_secret"
@@ -103,7 +110,6 @@ pub(crate) fn secret_severity(pattern_name: &str) -> &'static str {
         | "anthropic_api_key"
         | "plaid_secret" => "CRITICAL",
 
-        // High
         "aws_key"
         | "github"
         | "github_fine"
@@ -130,7 +136,6 @@ pub(crate) fn secret_severity(pattern_name: &str) -> &'static str {
         | "postmark"
         | "mapbox_sk" => "HIGH",
 
-        // Low
         "supabase_publishable"
         | "supabase_url"
         | "supabase_anon_jwt"
@@ -138,15 +143,12 @@ pub(crate) fn secret_severity(pattern_name: &str) -> &'static str {
         | "sentry_dsn"
         | "mapbox_pk" => "LOW",
 
-        // Info
         "internal_ip" | "aws_arn" | "gcp_service_account" | "env_var_reference" => "INFO",
 
-        // Default for unknown (custom patterns)
         _ => "MEDIUM",
     }
 }
 
-/// Severity counts for the summary section.
 struct SeverityCounts {
     critical: usize,
     high: usize,
@@ -310,7 +312,6 @@ pub(crate) fn render_summary(result: &ScanResult) -> Vec<String> {
 
     render_risk_and_metrics(&mut report, result, &counts);
 
-    // Technologies detected (brief inline)
     if !result.technologies.is_empty() {
         let tech_list: String = result
             .technologies

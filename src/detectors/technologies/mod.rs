@@ -1,7 +1,15 @@
+// Does:  Combines technology fingerprints from browser and captured evidence.
+// Holds: Technology names are deduplicated before the fingerprint is returned.
+
+/// Response-header signatures.
 pub mod headers;
+/// HTML meta signatures.
 pub mod meta;
+/// Browser runtime signatures.
 pub mod runtime;
+/// Script and network URL signatures.
 pub mod scripts;
+/// `WordPress` fingerprints.
 pub mod wordpress;
 
 use chromiumoxide::Page;
@@ -9,13 +17,22 @@ use serde_json::Value;
 
 use crate::types::{ApiCall, MetaTag, TechnologyVersion};
 
-/// All technology detection results from a single scan.
+/// Technologies and versions detected during a scan.
 pub struct TechFingerprint {
+    /// Deduplicated detected technology names.
     pub technologies: Vec<String>,
+    /// Detected technology versions.
     pub versions: Vec<TechnologyVersion>,
 }
 
-/// Run all technology detection methods and return deduplicated results.
+/// Combines technology detection results from captured data and browser runtime.
+///
+/// ```no_run
+/// # use corrode_scanner::detectors::technologies::detect_all;
+/// # async fn run(page: &chromiumoxide::Page) {
+/// let fingerprint = detect_all(page, &[], &[], &[]).await;
+/// # }
+/// ```
 pub async fn detect_all(
     page: &Page,
     calls: &[ApiCall],
@@ -24,26 +41,19 @@ pub async fn detect_all(
 ) -> TechFingerprint {
     let mut technologies = Vec::new();
 
-    // Runtime window object detection (requires live page)
     technologies.extend(runtime::detect(page).await);
 
-    // HTTP response header detection
     technologies.extend(headers::detect(calls));
 
-    // HTML meta tag detection
     technologies.extend(meta::detect(meta_tags));
 
-    // Script URL/bundle pattern detection (DOM scripts + network requests)
     technologies.extend(scripts::detect(scripts, calls));
 
-    // Deduplicate
     technologies.sort();
     technologies.dedup();
 
-    // Version extraction (React, Next.js)
     let mut versions = runtime::extract_versions(page, scripts).await;
 
-    // WordPress uses only already-captured DOM/network/script evidence.
     let wordpress = wordpress::detect(calls, meta_tags, scripts);
     if wordpress.detected && !technologies.iter().any(|tech| tech == "WordPress") {
         technologies.push("WordPress".to_owned());

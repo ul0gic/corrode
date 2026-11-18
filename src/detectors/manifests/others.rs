@@ -1,3 +1,6 @@
+// Does:  Extracts Nuxt, SvelteKit, Astro, and chunk observations.
+// Holds: Route candidates are deduplicated by path and kind within the result.
+
 use std::sync::LazyLock;
 
 use regex::Regex;
@@ -21,8 +24,6 @@ impl OtherResult {
     }
 }
 
-/// All inputs optional: `nuxt`/`sveltekit` window-global JSON, `chunk_names` asset
-/// URLs, `astro_islands` attribute-map JSON.
 pub fn parse(
     nuxt: Option<&str>,
     sveltekit: Option<&str>,
@@ -53,7 +54,6 @@ fn parse_nuxt(nuxt: Option<&str>) -> OtherResult {
         }
     }
 
-    // `data` keys are useFetch/useAsyncData cache keys — frequently literal API URLs.
     if let Some(data) = value.get("data").and_then(Value::as_object) {
         for key in data.keys() {
             if key.starts_with('/') {
@@ -85,7 +85,6 @@ fn parse_sveltekit(sveltekit: Option<&str>) -> OtherResult {
         return out;
     };
 
-    // `route.id` is SvelteKit's template form (`/blog/[slug]`, `/(app)/dashboard`).
     if let Some(id) = value
         .get("route")
         .and_then(|r| r.get("id"))
@@ -122,7 +121,7 @@ fn parse_astro(islands: &[String]) -> OtherResult {
             }
         }
     }
-    // Astro ships no client route manifest; routes stay empty by design.
+
     out.manifests.push(FrameworkManifest {
         framework: "Astro".to_owned(),
         manifest_type: "astro-islands".to_owned(),
@@ -140,7 +139,7 @@ fn parse_chunks(chunk_names: &[String]) -> OtherResult {
         let Some(stem) = chunk_stem(raw) else {
             continue;
         };
-        // Numeric-only / hash-only chunk names carry no semantic value.
+
         if is_opaque_chunk_stem(&stem) {
             continue;
         }
@@ -159,7 +158,6 @@ fn parse_chunks(chunk_names: &[String]) -> OtherResult {
     out
 }
 
-/// Drop `SvelteKit` route-group segments `(group)`, which are URL-transparent.
 fn strip_groups(id: &str) -> String {
     let kept: Vec<&str> = id
         .split('/')
@@ -173,7 +171,7 @@ fn strip_groups(id: &str) -> String {
     }
 }
 
-// `assets/UserProfile-a1b2c3d4.js` -> `UserProfile`; hash suffix and extension dropped.
+// Why: The fixed regular expression is compiled once and must be valid.
 #[allow(clippy::unwrap_used)]
 static CHUNK_STEM_RE: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"([A-Za-z0-9_.\[\]-]+?)(?:[-.][0-9a-f]{6,})?\.[cm]?js$").unwrap());
@@ -251,7 +249,7 @@ mod tests {
         assert!(r
             .iter()
             .any(|x| x.path == "Counter" && x.kind == "component"));
-        assert!(out.manifests[0].routes.is_empty());
+        assert_eq!(out.manifests[0].routes, Vec::<String>::new());
     }
 
     #[test]
@@ -280,8 +278,7 @@ mod tests {
     fn absent_or_unparseable_inputs_yield_nothing() {
         let out = parse(Some("{bad"), Some("nope"), &[], &["{also bad".to_owned()]);
         assert!(out.routes.into_vec().is_empty());
-        // Astro still emits its (empty-route) manifest on island presence; here
-        // the island was unparseable so no component surfaced.
+
         assert!(out.manifests.iter().all(|m| m.routes.is_empty()));
     }
 

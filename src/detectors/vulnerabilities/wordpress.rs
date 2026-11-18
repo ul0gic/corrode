@@ -1,3 +1,6 @@
+// Does:  Correlates WordPress version evidence with core advisories.
+// Holds: Weak asset version hints do not produce advisory findings.
+
 use crate::detectors::technologies::wordpress::{META_GENERATOR_METHOD, REST_GENERATOR_METHOD};
 use crate::types::{
     AssessmentDisposition, EvidenceSource, FindingEvidence, TechnologyVersion, Vulnerability,
@@ -11,8 +14,9 @@ const RCE_ADVISORY: &str =
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 struct Version(u32, u32, u32);
 
-/// Correlate authoritative, passively observed `WordPress` versions with the
-/// July 2026 core advisories. Weak asset hints deliberately emit no CVE.
+/// Checks authoritative `WordPress` versions against supported core advisories.
+///
+///     assert!(corrode_scanner::detectors::vulnerabilities::wordpress::check_cves(&[]).is_empty());
 pub fn check_cves(versions: &[TechnologyVersion]) -> Vec<Vulnerability> {
     let Some(observed) = versions.iter().find(|version| {
         version.name.eq_ignore_ascii_case("WordPress")

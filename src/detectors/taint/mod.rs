@@ -1,10 +1,13 @@
-//! Taint is reset at every function boundary and never crosses files — the
-//! primary false-positive control. Widening scope reintroduces unrealizable flows.
+// Does:  Finds and renders static source-to-sink flows.
+// Holds: Taint environments are reset at function boundaries and between scripts.
 
 pub(crate) mod csp;
+/// Correlations of detector output into gadget candidates.
 pub mod gadgets;
 pub(crate) mod parse;
+/// Message handler and send detection.
 pub mod postmessage;
+/// Prototype-pollution surface detection.
 pub mod proto;
 pub(crate) mod sinks;
 pub(crate) mod sources;
@@ -12,8 +15,13 @@ pub(crate) mod visitor;
 
 use crate::types::TaintFlow;
 
-/// `scripts` is `(source_text, source_url)`; unparseable scripts are skipped
-/// silently (no panic on hostile input).
+/// Finds static source-to-sink flows in scripts.
+/// Scripts that are empty, unparseable, or exceed 500,000 bytes are skipped.
+///
+/// ```
+/// # use corrode_scanner::detectors::taint::analyze;
+/// let flows = analyze(&[("document.body.innerHTML = location.search", "inline")]);
+/// ```
 pub fn analyze(scripts: &[(&str, &str)]) -> Vec<TaintFlow> {
     let mut flows = Vec::new();
 
@@ -29,8 +37,6 @@ pub fn analyze(scripts: &[(&str, &str)]) -> Vec<TaintFlow> {
     dedupe(flows)
 }
 
-/// Lift an internal `RawFlow` into the public `TaintFlow`. `confidence` is left
-/// `None` (Phase 3 scores) and `runtime_observed` is `false` (task 2.8 sets it).
 fn assemble(raw: visitor::RawFlow, url: &str) -> TaintFlow {
     TaintFlow {
         source: raw.source_label,
@@ -43,17 +49,22 @@ fn assemble(raw: visitor::RawFlow, url: &str) -> TaintFlow {
     }
 }
 
-/// Collapse identical flows (same source, sink, and location) that the visitor
-/// can emit when a value reaches the same sink by two read paths.
 fn dedupe(mut flows: Vec<TaintFlow>) -> Vec<TaintFlow> {
     let mut seen = std::collections::HashSet::new();
     flows.retain(|f| seen.insert((f.source.clone(), f.sink.clone(), f.location.clone())));
     flows
 }
 
-/// Static seam (task 2.8): marks a flow observed when a non-trivial value names
-/// its source/sink; unused until live capture lands, so `dead_code` is allowed.
+// Why: The public observation hook is available for callers that correlate runtime values.
 #[allow(dead_code)]
+/// Marks flows when an observed value contains their source or sink label.
+/// Values shorter than three bytes after trimming are ignored.
+///
+/// ```
+/// # use corrode_scanner::detectors::taint::{analyze, mark_runtime_observed};
+/// # let mut flows = analyze(&[("document.body.innerHTML = location.search", "inline")]);
+/// mark_runtime_observed(&mut flows, &["location.search".to_owned()]);
+/// ```
 pub fn mark_runtime_observed(flows: &mut [TaintFlow], observed_values: &[String]) {
     let signals: Vec<&str> = observed_values
         .iter()
@@ -71,8 +82,13 @@ pub fn mark_runtime_observed(flows: &mut [TaintFlow], observed_values: &[String]
     }
 }
 
-/// Renders a flow as `source → …hops… → sink`; kept here so the format lives
-/// with the type that produces it.
+/// Renders a flow from source through its hops to sink.
+///
+/// ```
+/// # use corrode_scanner::detectors::taint::{analyze, render_flow};
+/// # let flows = analyze(&[("document.body.innerHTML = location.search", "inline")]);
+/// let rendered = render_flow(&flows[0]);
+/// ```
 pub fn render_flow(flow: &TaintFlow) -> String {
     let mut parts = Vec::with_capacity(flow.path.len() + 2);
     parts.push(flow.source.clone());
@@ -118,7 +134,6 @@ mod tests {
 
     #[test]
     fn safe_sink_text_content_is_not_flagged() {
-        // Tainted value into textContent must produce no flow.
         let src = r#"
             const x = location.search;
             document.getElementById("o").textContent = x;
@@ -128,7 +143,6 @@ mod tests {
 
     #[test]
     fn constant_only_assignment_is_not_flagged() {
-        // A static, non-tainted RHS into a real sink must not be a flow.
         let src = r#"document.getElementById("o").innerHTML = "<b>static</b>";"#;
         assert!(analyze_one(src).is_empty());
     }
@@ -141,8 +155,6 @@ mod tests {
 
     #[test]
     fn no_cross_function_false_flow() {
-        // `tainted` is set in one function and a sink reads a *same-named* local
-        // in another. Intra-function scoping must not connect them.
         let src = r"
             function a() { const v = location.search; return v; }
             function b(v) { document.body.innerHTML = v; }
@@ -248,7 +260,6 @@ mod tests {
 
     #[test]
     fn runtime_hook_ignores_trivial_observed_values() {
-        // Short/empty observed values must not promote flows.
         let mut flows = vec![sample_flow("location.hash", "innerHTML")];
         mark_runtime_observed(&mut flows, &[String::new(), "ab".to_owned()]);
         assert!(!flows[0].runtime_observed);

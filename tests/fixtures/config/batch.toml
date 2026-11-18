@@ -1,0 +1,6 @@
+[scan]
+timeout = 7
+format = "json"
+
+[report]
+redact_secrets = true

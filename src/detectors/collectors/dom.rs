@@ -1,3 +1,6 @@
+// Does:  Collects page DOM, storage, and cookie artifacts.
+// Holds: Hidden inputs, selected data attributes, and storage values are scanned for secrets.
+
 use anyhow::Result;
 use chromiumoxide::Page;
 use serde_json;
@@ -7,19 +10,41 @@ use crate::detectors::secrets::SecretScanner;
 use crate::scanner::page_utils;
 use crate::types::{CookieInfo, DataAttribute, FormInfo, HiddenInput, MetaTag};
 
+/// DOM, storage, and cookie observations from a page.
 pub struct DomArtifacts {
+    /// Observed forms.
     pub forms: Vec<FormInfo>,
+    /// Observed hidden inputs.
     pub hidden_inputs: Vec<HiddenInput>,
+    /// Observed metadata tags.
     pub meta_tags: Vec<MetaTag>,
+    /// Selected elements and their data attributes.
     pub data_attributes: Vec<DataAttribute>,
+    /// Resolved iframe URLs.
     pub iframes: Vec<String>,
+    /// Count of distinct observed href and src values.
     pub all_links: usize,
+    /// Local storage entries.
     pub local_storage: HashMap<String, String>,
+    /// Session storage entries.
     pub session_storage: HashMap<String, String>,
+    /// Cookie summaries.
     pub cookies: Vec<CookieInfo>,
+    /// Browser cookie records.
     pub raw_cookies: Vec<chromiumoxide::cdp::browser_protocol::network::Cookie>,
 }
 
+/// Collects DOM, storage, and cookie artifacts from a page.
+/// Returns an error if selected values cannot be serialized.
+///
+/// ```no_run
+/// # use corrode_scanner::detectors::collectors::dom::collect;
+/// # use corrode_scanner::detectors::secrets::SecretScanner;
+/// # async fn example(page: &chromiumoxide::Page, scanner: &SecretScanner) -> anyhow::Result<()> {
+/// let artifacts = collect(page, scanner).await?;
+/// # Ok(())
+/// # }
+/// ```
 pub async fn collect(page: &Page, scanner: &SecretScanner) -> Result<DomArtifacts> {
     let forms = page_utils::extract_json::<Vec<FormInfo>>(page,
         "Array.from(document.forms).map(f => ({ action: f.action, method: f.method, input_count: f.elements.length }))"

@@ -1,7 +1,11 @@
+// Does:  Flags applicable Next.js advisory leads from detected technology names.
+// Holds: Advisory leads do not claim that an observed version is vulnerable.
+
 use crate::types::{AssessmentDisposition, TechnologyVersion, Vulnerability};
 
-/// Emits an info advisory when Next.js is detected but unversioned, and a graded
-/// finding when a vulnerable version is confirmed.
+/// Flags Next.js advisory leads when a matching technology name is present.
+///
+///     assert!(corrode_scanner::detectors::vulnerabilities::nextjs::check_cves(&[]).is_empty());
 pub fn check_cves(versions: &[TechnologyVersion]) -> Vec<Vulnerability> {
     let has_nextjs = versions.iter().any(|v| v.name.starts_with("Next.js"));
 

@@ -1,7 +1,10 @@
+// Does:  Finds endpoint and credential-like literals in parsed scripts.
+// Holds: Empty, oversized, and unparseable scripts produce no findings.
+
 use std::collections::HashSet;
 use std::sync::{Arc, LazyLock};
 
-use regex::Regex; // used by LazyLock statics
+use regex::Regex;
 use swc_common::{BytePos, FileName, SourceMap, Span, Spanned, DUMMY_SP};
 use swc_ecma_ast::EsVersion;
 use swc_ecma_ast::{
@@ -18,20 +21,29 @@ use swc_ecma_visit::{Visit, VisitWith};
 
 use crate::types::AstFinding;
 
-// Static regex patterns compiled once at first use
-#[allow(clippy::unwrap_used)] // Regex literals are compile-time validated; these cannot fail at runtime
+// Why: The fixed regular expression is compiled once and must be valid.
+#[allow(clippy::unwrap_used)]
 static URL_REGEX: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r#"https?://[^\s"']{6,}"#).unwrap());
-#[allow(clippy::unwrap_used)] // Regex literals are compile-time validated; these cannot fail at runtime
+// Why: The fixed regular expression is compiled once and must be valid.
+#[allow(clippy::unwrap_used)]
 static CREDENTIAL_HINT_REGEX: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r"(?i)(api[_-]?key|token|secret|bearer|client[_-]?secret|auth)").unwrap()
 });
-#[allow(clippy::unwrap_used)] // Regex literals are compile-time validated; these cannot fail at runtime
+// Why: The fixed regular expression is compiled once and must be valid.
+#[allow(clippy::unwrap_used)]
 static JWT_REGEX: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"eyJ[A-Za-z0-9_\-]+\.[A-Za-z0-9_\-]+\.[A-Za-z0-9_\-]+").unwrap());
 
 const MAX_SCRIPT_BYTES: usize = 500_000;
 
+/// Finds endpoint and credential-like literals in a script.
+/// Empty, unparseable, or larger than 500,000-byte scripts produce no findings.
+///
+/// ```
+/// # use corrode_scanner::detectors::collectors::ast::analyze_script;
+/// let findings = analyze_script("fetch('https://example.test/api')", "inline");
+/// ```
 pub fn analyze_script(source: &str, origin: &str) -> Vec<AstFinding> {
     if source.trim().is_empty() || source.len() > MAX_SCRIPT_BYTES {
         return Vec::new();

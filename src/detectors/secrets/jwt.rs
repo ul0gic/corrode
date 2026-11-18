@@ -1,3 +1,6 @@
+// Does:  Recognizes role markers in JWT payloads.
+// Holds: Role markers are literal payload substrings; signatures are not checked.
+
 use base64::{engine::general_purpose, Engine as _};
 
 pub(crate) fn jwt_has_role(jwt: &str, role: &str) -> bool {

@@ -1,3 +1,6 @@
+// Does:  Classifies findings and derives assessment leads.
+// Holds: Explicit vulnerability dispositions are retained.
+
 use crate::types::{
     AssessmentDisposition, ConfidenceLevel, ScanResult, SecretFinding, Vulnerability,
 };

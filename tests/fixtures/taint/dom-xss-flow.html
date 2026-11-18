@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Taint DOM-XSS Flow Fixture - Corrode QA</title>
+    <!--
+        Known source -> sink DOM-XSS flows the taint engine must map.
+        Each positive case is a single intra-function flow; the negatives
+        exercise the safe-sink / constant-only suppressions.
+    -->
+</head>
+<body>
+    <div id="content"></div>
+    <iframe id="frame"></iframe>
+
+    <!-- POSITIVE 1: location.search -> URLSearchParams.get -> innerHTML -->
+    <script>
+        function renderFromQuery() {
+            const params = new URLSearchParams(location.search);
+            const redirect = params.get("redirect");
+            document.getElementById("content").innerHTML = redirect;
+        }
+    </script>
+
+    <!-- POSITIVE 2: location.hash -> eval (code execution) -->
+    <script>
+        function runHash() {
+            const cmd = location.hash.slice(1);
+            eval(cmd);
+        }
+    </script>
+
+    <!-- POSITIVE 3: location.href -> document.write (HTML injection) -->
+    <script>
+        function writeFromUrl() {
+            const raw = location.href;
+            document.write(raw);
+        }
+    </script>
+
+    <!-- POSITIVE 4: localStorage.getItem -> iframe.srcdoc (frame content) -->
+    <script>
+        function fillFrame() {
+            const stored = localStorage.getItem("template");
+            document.getElementById("frame").srcdoc = stored;
+        }
+    </script>
+
+    <!-- POSITIVE 5: location.search -> setAttribute("href", ...) (navigation) -->
+    <script>
+        function setLink(el) {
+            const next = new URLSearchParams(location.search).get("next");
+            el.setAttribute("href", next);
+        }
+    </script>
+
+    <!-- POSITIVE 6: React escape hatch dangerouslySetInnerHTML from location.hash -->
+    <script type="text/babel">
+        function Comment() {
+            const body = location.hash;
+            return React.createElement("div", { dangerouslySetInnerHTML: { __html: body } });
+        }
+    </script>
+
+    <!-- NEGATIVE 1: safe sink textContent (must NOT be a flow) -->
+    <script>
+        function safeRender() {
+            const redirect = new URLSearchParams(location.search).get("redirect");
+            document.getElementById("content").textContent = redirect;
+        }
+    </script>
+
+    <!-- NEGATIVE 2: constant-only assignment into innerHTML (no taint) -->
+    <script>
+        function staticRender() {
+            document.getElementById("content").innerHTML = "<b>Welcome</b>";
+        }
+    </script>
+
+    <!-- NEGATIVE 3: setAttribute with a safe attribute name -->
+    <script>
+        function setClass(el) {
+            const cls = new URLSearchParams(location.search).get("theme");
+            el.setAttribute("class", cls);
+        }
+    </script>
+</body>
+</html>
