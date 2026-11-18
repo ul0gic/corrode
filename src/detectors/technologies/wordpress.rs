@@ -2,9 +2,8 @@
 // Holds: Version selection prefers generator evidence over asset consensus.
 
 use std::collections::{HashMap, HashSet};
-use std::sync::LazyLock;
+use url::Url;
 
-use regex::Regex;
 use serde_json::Value;
 
 use crate::types::{ApiCall, MetaTag, TechnologyVersion};
@@ -25,28 +24,45 @@ pub struct WordPressFingerprint {
     pub version: Option<TechnologyVersion>,
 }
 
-/// Identifies `WordPress` and selects the strongest captured version hint.
+/// Identifies `WordPress` from generator tags and asset URLs when no document origin is available.
 ///
 ///     assert!(!corrode_scanner::detectors::technologies::wordpress::detect(&[], &[], &[]).detected);
 pub fn detect(calls: &[ApiCall], meta_tags: &[MetaTag], scripts: &[Value]) -> WordPressFingerprint {
-    if let Some(version) = version_from_meta(meta_tags) {
-        return WordPressFingerprint {
-            detected: true,
-            version: Some(TechnologyVersion {
-                name: "WordPress".to_owned(),
-                version: Some(version),
-                detection_method: META_GENERATOR_METHOD.to_owned(),
-            }),
-        };
-    }
+    detect_for_page(calls, meta_tags, scripts, None)
+}
 
-    if let Some(version) = version_from_observed_rest(calls) {
+/// Identifies `WordPress` using generator evidence scoped to the supplied document URL.
+/// ```
+/// # use corrode_scanner::detectors::technologies::wordpress::detect_for_page;
+/// # let doc = url::Url::parse("https://example.test/").unwrap();
+/// assert!(!detect_for_page(&[], &[], &[], Some(&doc)).detected);
+/// ```
+pub fn detect_for_page(
+    calls: &[ApiCall],
+    meta_tags: &[MetaTag],
+    scripts: &[Value],
+    document: Option<&Url>,
+) -> WordPressFingerprint {
+    let mut versions = meta_tags
+        .iter()
+        .filter(|tag| tag.name.eq_ignore_ascii_case("generator"))
+        .filter_map(|tag| version_from_generator(&tag.content))
+        .map(|v| (v, META_GENERATOR_METHOD))
+        .chain(
+            calls
+                .iter()
+                .filter_map(|call| rest_version(call, document?))
+                .map(|v| (v, REST_GENERATOR_METHOD)),
+        );
+    if let Some((version, method)) = versions.next() {
+        // Why: Conflicting release identifiers cannot establish which version serves this page.
+        let consistent = versions.all(|(other, _)| other == version);
         return WordPressFingerprint {
             detected: true,
-            version: Some(TechnologyVersion {
+            version: consistent.then(|| TechnologyVersion {
                 name: "WordPress".to_owned(),
                 version: Some(version),
-                detection_method: REST_GENERATOR_METHOD.to_owned(),
+                detection_method: method.to_owned(),
             }),
         };
     }
@@ -81,25 +97,32 @@ fn has_wordpress_marker(value: &str) -> bool {
         || lower.contains("rest_route=/")
 }
 
-fn version_from_meta(meta_tags: &[MetaTag]) -> Option<String> {
-    meta_tags
-        .iter()
-        .filter(|tag| tag.name.eq_ignore_ascii_case("generator"))
-        .find_map(|tag| version_from_generator(&tag.content))
-}
-
-fn version_from_observed_rest(calls: &[ApiCall]) -> Option<String> {
-    calls.iter().find_map(|call| {
-        let lower = call.url.to_lowercase();
-        if !lower.contains("/wp-json/") && !lower.contains("rest_route=/") {
-            return None;
-        }
-        let body = call.response_body.as_deref()?;
-        let body = serde_json::from_str::<Value>(body).ok()?;
-        body.get("generator")
-            .and_then(Value::as_str)
-            .and_then(version_from_generator)
-    })
+fn rest_version(call: &ApiCall, document: &Url) -> Option<String> {
+    let url = Url::parse(&call.url).ok()?;
+    if url.origin() != document.origin() || call.status != 200 {
+        return None;
+    }
+    let path = url.path().trim_end_matches('/');
+    let installation = if let Some(base) = path.strip_suffix("/wp-json") {
+        base
+    } else if url
+        .query_pairs()
+        .any(|(key, value)| key == "rest_route" && value == "/")
+    {
+        path.strip_suffix("/index.php").unwrap_or(path)
+    } else {
+        return None;
+    };
+    // Why: Sibling sites on one origin can run different WordPress installations.
+    if !document
+        .path()
+        .strip_prefix(installation)
+        .is_some_and(|suffix| suffix.is_empty() || suffix.starts_with('/'))
+    {
+        return None;
+    }
+    let body = serde_json::from_str::<Value>(call.response_body.as_deref()?).ok()?;
+    version_from_generator(body.get("generator")?.as_str()?)
 }
 
 fn version_from_asset_consensus(calls: &[ApiCall], scripts: &[Value]) -> Option<String> {
@@ -133,38 +156,41 @@ fn version_from_asset_consensus(calls: &[ApiCall], scripts: &[Value]) -> Option<
         .map(|(version, _)| version)
 }
 
-// Why: The unwrapped regular expressions are fixed literals.
-#[allow(clippy::unwrap_used)]
-static WORDPRESS_VERSION_RE: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"(?i)\bwordpress\s+([0-9]+(?:\.[0-9]+){1,2})\b").unwrap());
-
 fn version_from_generator(value: &str) -> Option<String> {
-    if let Ok(url) = url::Url::parse(value) {
-        if let Some(version) = url
-            .query_pairs()
-            .find(|(key, _)| key == "v")
-            .and_then(|(_, value)| normalize_version(&value))
-        {
-            return Some(version);
-        }
+    if let Some((product, version)) = value.trim().split_once(' ') {
+        return product
+            .eq_ignore_ascii_case("WordPress")
+            .then(|| normalize_version(version))
+            .flatten();
     }
-
-    let captures = WORDPRESS_VERSION_RE.captures(value)?;
-    let matched = captures.get(1)?;
-    let suffix = value.get(matched.end()..).unwrap_or_default();
-    if suffix.starts_with(['-', '+']) {
+    let url = Url::parse(value).ok()?;
+    if url.scheme() != "https"
+        || url.host_str() != Some("wordpress.org")
+        || url.path() != "/"
+        || url.port().is_some()
+        || !url.username().is_empty()
+        || url.password().is_some()
+        || url.fragment().is_some()
+    {
         return None;
     }
-    normalize_version(matched.as_str())
+    let mut params = url.query_pairs();
+    let (key, version) = params.next()?;
+    if key != "v" || params.next().is_some() {
+        return None;
+    }
+    normalize_version(&version)
 }
 
 fn normalize_version(value: &str) -> Option<String> {
     let trimmed = value.trim();
     let parts: Vec<&str> = trimmed.split('.').collect();
     if !(2..=3).contains(&parts.len())
-        || parts
-            .iter()
-            .any(|part| part.is_empty() || !part.chars().all(|c| c.is_ascii_digit()))
+        || parts.iter().any(|part| {
+            part.is_empty()
+                || (part.len() > 1 && part.starts_with('0'))
+                || !part.chars().all(|c| c.is_ascii_digit())
+        })
     {
         return None;
     }
@@ -207,10 +233,49 @@ mod tests {
             "https://example.test/wp-json/",
             Some(r#"{"generator":"https://wordpress.org/?v=6.9.4"}"#),
         )];
-        let result = detect(&calls, &[], &[]);
+        let document = Url::parse("https://example.test/").unwrap();
+        let result = detect_for_page(&calls, &[], &[], Some(&document));
         let version = result.version.expect("version");
+        let other = Url::parse("https://unrelated.test/").unwrap();
+        assert!(detect_for_page(&calls, &[], &[], Some(&other))
+            .version
+            .is_none());
         assert_eq!(version.version.as_deref(), Some("6.9.4"));
         assert_eq!(version.detection_method, REST_GENERATOR_METHOD);
+    }
+
+    #[test]
+    fn a_sibling_installation_cannot_supply_the_page_version() {
+        let api = [call(
+            "https://example.test/shop/wp-json/",
+            Some(r#"{"generator":"WordPress 6.9.4"}"#),
+        )];
+        for path in ["https://example.test/", "https://example.test/shopping/"] {
+            let page = Url::parse(path).unwrap();
+            assert!(detect_for_page(&api, &[], &[], Some(&page))
+                .version
+                .is_none());
+        }
+        let page = Url::parse("https://example.test/shop/cart").unwrap();
+        assert!(detect_for_page(&api, &[], &[], Some(&page))
+            .version
+            .is_some());
+    }
+
+    #[test]
+    fn conflicting_generator_versions_cannot_raise_an_advisory() {
+        let page = Url::parse("https://example.test/").unwrap();
+        let calls = [call(
+            "https://example.test/wp-json/",
+            Some(r#"{"generator":"https://wordpress.org/?v=6.9.4"}"#),
+        )];
+        let tags = [MetaTag {
+            name: "generator".to_owned(),
+            content: "WordPress 6.9.5".to_owned(),
+        }];
+        let fingerprint = detect_for_page(&calls, &tags, &[], Some(&page));
+        assert!(fingerprint.detected);
+        assert!(fingerprint.version.is_none());
     }
 
     #[test]
@@ -246,7 +311,13 @@ mod tests {
 
     #[test]
     fn prerelease_and_malformed_versions_are_rejected() {
-        for content in ["WordPress 7.0.1-alpha", "WordPress seven", "WordPress 7"] {
+        for content in [
+            "WordPress 7.0.1-alpha",
+            "WordPress seven",
+            "WordPress 7",
+            "https://other.test/?v=7.0.1",
+            "WordPress 7.0.1.9",
+        ] {
             let meta = vec![MetaTag {
                 name: "generator".to_owned(),
                 content: content.to_owned(),

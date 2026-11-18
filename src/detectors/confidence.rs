@@ -242,6 +242,7 @@ fn highest_trust(sources: &[EvidenceSource], category: FindingCategory) -> (i8, 
 
 fn trust_for(source: EvidenceSource, category: FindingCategory) -> (i8, &'static str) {
     match source {
+        EvidenceSource::Deployment => (0, "owner-supplied deployment record"),
         EvidenceSource::Runtime => (TRUST_RUNTIME, "runtime"),
         EvidenceSource::Network => (TRUST_NETWORK, "network"),
         EvidenceSource::SourceMap => match category {

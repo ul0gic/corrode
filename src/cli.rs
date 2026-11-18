@@ -10,18 +10,17 @@ use crate::config::{self, Config, OutputFormat};
 /// Command-line options for a single target or a URL file.
 #[derive(Parser, Debug)]
 #[command(name = "corrode")]
-#[command(about = "High-performance security scanner for exposed credentials and vulnerabilities", long_about = None)]
+#[command(about = "Passive web scanner for exposed credentials, security observations and advisory matches", long_about = None)]
 #[command(
     version,
     long_about = r#"
 Corrode - Web Application Security Scanner
 
-A blazing-fast Rust-based security scanner that discovers exposed credentials,
-API vulnerabilities, and security misconfigurations in web applications.
+Collects browser-visible security evidence and compares deployment records with published advisories.
 
 Features:
   * 45+ secret pattern detection (AWS, Firebase, Supabase, JWTs, etc.)
-  * API endpoint discovery and vulnerability testing
+  * Passive API endpoint discovery and advisory comparisons
   * Network traffic monitoring and analysis
   * Technology stack fingerprinting (40+ frameworks/services)
   * Comprehensive JSON and Markdown reporting
@@ -119,6 +118,7 @@ impl Args {
         };
 
         let mut cfg = Config {
+            deployments: crate::detectors::vulnerabilities::Deployments::default(),
             url: self.url,
             urls,
             output: self.output,

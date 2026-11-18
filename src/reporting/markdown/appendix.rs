@@ -1,5 +1,5 @@
 // Does:  Renders supplementary scan details and recommendations.
-// Holds: An empty recommendation list produces a passive-analysis clean-posture message.
+// Holds: Recommendations address observations made during this scan.
 
 use crate::types::{AssessmentDisposition, ScanResult};
 
@@ -87,10 +87,7 @@ pub(crate) fn render_recommendations(result: &ScanResult) -> Vec<String> {
     }
 
     if recs.is_empty() {
-        return vec![
-            "---\n## Recommendations\n".to_owned(),
-            "No actionable findings. The target presents a clean security posture based on passive analysis.\n".to_owned(),
-        ];
+        return Vec::new();
     }
 
     let mut report = vec!["---\n## Recommendations\n".to_owned()];

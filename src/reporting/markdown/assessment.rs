@@ -2,10 +2,44 @@
 // Holds: Explicit vulnerability dispositions are retained.
 
 use crate::types::{
-    AssessmentDisposition, ConfidenceLevel, ScanResult, SecretFinding, Vulnerability,
+    AdvisoryOutcome, AssessmentDisposition, ConfidenceLevel, ScanResult, SecretFinding,
+    Vulnerability,
 };
 
 use super::summary::secret_severity;
+
+pub(crate) fn render_advisory_checks(result: &ScanResult) -> Vec<String> {
+    let mut lines = vec!["---\n## Advisory comparisons\n".to_owned()];
+    if result.advisory_checks.is_empty() {
+        lines.push(
+            "This result has no recorded advisory coverage. Host exposure is unknown.\n".to_owned(),
+        );
+        return lines;
+    }
+    lines.push("Corrode compares versions and settings with published advisories. Host exploitability is unverified.\n".to_owned());
+    lines.push("| Advisory | Evidence used or required | Result |".to_owned());
+    lines.push("|---|---|---|".to_owned());
+    for check in &result.advisory_checks {
+        let status = match &check.outcome {
+            AdvisoryOutcome::Matched { .. } => "**Advisory match**".to_owned(),
+            AdvisoryOutcome::NoMatch { reason } => format!("No match — {reason}"),
+            AdvisoryOutcome::NotAssessed { reason } => format!("Not assessed — {reason}"),
+        };
+        lines.push(format!(
+            "| {} | {} | {} |",
+            check.advisory, check.method, status
+        ));
+    }
+    for check in &result.advisory_checks {
+        if let AdvisoryOutcome::Matched { details } = &check.outcome {
+            lines.push(format!("\n### {}\n", details.vuln_type));
+            lines.push(details.description.clone());
+            lines.push(format!("\n**Recommended action**: {}", details.remediation));
+        }
+    }
+    lines.push(String::new());
+    lines
+}
 
 pub(crate) fn secret_disposition(
     pattern_name: &str,

@@ -27,6 +27,9 @@ pub struct ScanResult {
     pub technology_versions: Vec<TechnologyVersion>,
     /// Security assessments.
     pub vulnerabilities: Vec<Vulnerability>,
+    /// Per-advisory evidence comparisons for this scan. Older reports lack coverage data.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub advisory_checks: Vec<AdvisoryCheck>,
     /// Storage assessments; omitted from JSON when empty.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub storage_assessments: Vec<StorageAssessment>,
@@ -268,6 +271,30 @@ pub struct SecurityAnalysis {
     pub mixed_content: Vec<String>,
 }
 
+/// Comparison of one published advisory with the available evidence.
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct AdvisoryCheck {
+    /// Advisory identifiers covered by this comparison.
+    pub advisory: String,
+    /// Source of evidence required by the rule.
+    pub method: String,
+    /// Result of comparing evidence with advisory criteria.
+    #[serde(flatten)]
+    pub outcome: AdvisoryOutcome,
+}
+
+/// Advisory comparison outcomes describe evidence and leave host exploitability unverified.
+#[derive(Debug, Serialize, Deserialize, Clone)]
+#[serde(tag = "status", rename_all = "snake_case")]
+pub enum AdvisoryOutcome {
+    /// Supplied evidence satisfies the rule.
+    Matched { details: Vulnerability },
+    /// The available evidence falls outside this rule's criteria.
+    NoMatch { reason: String },
+    /// Required evidence was missing or unsuitable.
+    NotAssessed { reason: String },
+}
+
 /// Security assessment and its supporting evidence.
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Vulnerability {
@@ -411,6 +438,8 @@ pub enum ConfidenceLevel {
 #[derive(Debug, Serialize, Deserialize, Clone, Copy, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 pub enum EvidenceSource {
+    /// Installed component and configuration declared by the deployment owner.
+    Deployment,
     /// Browser runtime observation.
     Runtime,
     /// Network observation.

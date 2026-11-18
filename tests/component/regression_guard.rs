@@ -4,7 +4,7 @@
 use std::collections::HashMap;
 
 use corrode_scanner::detectors::taint::{self, gadgets, postmessage, proto};
-use corrode_scanner::detectors::{manifests, vulnerabilities::rsc};
+use corrode_scanner::detectors::{manifests, technologies::rsc};
 
 const URL: &str = "https://example.com/benign.html";
 
@@ -31,8 +31,10 @@ fn benign_page_yields_no_manifest_or_rsc_surface() {
         include_str!("../fixtures/taint/benign-no-findings.html"),
         URL,
     );
-    let vulns = rsc::detect(&scripts, &HashMap::new());
-    assert!(vulns.is_empty(), "{vulns:?}");
+    assert_eq!(
+        rsc::fingerprint(&scripts, &HashMap::new()),
+        rsc::RscSurface::default()
+    );
 }
 
 #[test]
@@ -42,5 +44,8 @@ fn empty_input_degrades_across_detectors_without_panic() {
     assert!(proto::detect(&empty).is_empty());
     assert!(postmessage::detect(&empty).is_empty());
     assert!(gadgets::inventory(&empty, None).is_empty());
-    assert!(rsc::detect(&empty, &HashMap::new()).is_empty());
+    assert_eq!(
+        rsc::fingerprint(&empty, &HashMap::new()),
+        rsc::RscSurface::default()
+    );
 }

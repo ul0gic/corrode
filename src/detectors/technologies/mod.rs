@@ -5,6 +5,8 @@
 pub mod headers;
 /// HTML meta signatures.
 pub mod meta;
+/// React Server Component inventory signals.
+pub mod rsc;
 /// Browser runtime signatures.
 pub mod runtime;
 /// Script and network URL signatures.
@@ -54,7 +56,13 @@ pub async fn detect_all(
 
     let mut versions = runtime::extract_versions(page, scripts).await;
 
-    let wordpress = wordpress::detect(calls, meta_tags, scripts);
+    let document = page
+        .url()
+        .await
+        .ok()
+        .flatten()
+        .and_then(|s| url::Url::parse(&s).ok());
+    let wordpress = wordpress::detect_for_page(calls, meta_tags, scripts, document.as_ref());
     if wordpress.detected && !technologies.iter().any(|tech| tech == "WordPress") {
         technologies.push("WordPress".to_owned());
         technologies.sort();

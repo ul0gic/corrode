@@ -12,7 +12,6 @@ use std::time::{Duration, Instant};
 use tokio::time;
 
 use crate::config::{Config, OutputFormat};
-use crate::detectors::vulnerabilities::rsc;
 use crate::detectors::{
     collectors::{
         dom::{self, DomArtifacts},
@@ -136,7 +135,11 @@ pub async fn run(config: Config) -> Result<()> {
         {
             Ok(result) => {
                 let secrets_count: usize = result.secrets.values().map(std::vec::Vec::len).sum();
-                let vulns_count = result.vulnerabilities.len();
+                let vulns_count = result
+                    .vulnerabilities
+                    .iter()
+                    .filter(|v| v.disposition == crate::types::AssessmentDisposition::Finding)
+                    .count();
                 let comments_count = result.comments.len();
                 total_secrets += secrets_count;
                 total_vulns += vulns_count;
@@ -158,7 +161,7 @@ pub async fn run(config: Config) -> Result<()> {
 
                 if secrets_count > 0 || vulns_count > 0 {
                     println!(
-                        "{} {} - {} secrets, {} vulns, {} comments",
+                        "{} {} - {} secrets, {} vulnerability findings, {} comments",
                         "[!]".red().bold(),
                         result.url.yellow(),
                         secrets_count.to_string().red().bold(),
@@ -185,10 +188,14 @@ pub async fn run(config: Config) -> Result<()> {
                     }
                 }
 
+                let advisory_summary = crate::reporting::advisory_summary(&result.advisory_checks);
+                println!("    Advisory comparisons for {url}: {advisory_summary}. Host exploitability unverified.");
+
                 outcomes.push(ScanOutcome {
                     url: url.clone(),
                     secrets: secrets_count,
                     vulns: vulns_count,
+                    advisory_summary,
                     status: ScanStatus::Success,
                 });
 
@@ -201,6 +208,7 @@ pub async fn run(config: Config) -> Result<()> {
                     url: url.clone(),
                     secrets: 0,
                     vulns: 0,
+                    advisory_summary: "Scan failed".to_owned(),
                     status: ScanStatus::Failed(format!("{e}")),
                 });
             }
@@ -221,7 +229,7 @@ pub async fn run(config: Config) -> Result<()> {
         let header_status = "Status";
         println!(
             "  {:<50} {:<10} {:<10} {}",
-            "URL", "Secrets", "Vulns", header_status
+            "URL", "Secrets", "Vuln finds", header_status
         );
         println!("  {}", "-".repeat(80));
         for outcome in &outcomes {
@@ -256,7 +264,7 @@ pub async fn run(config: Config) -> Result<()> {
         total_secrets.to_string().red().bold()
     );
     println!(
-        "{} Total vulnerabilities: {}",
+        "{} Total vulnerability findings (excludes advisory matches): {}",
         "[!]".yellow().bold(),
         total_vulns.to_string().yellow().bold()
     );
@@ -407,7 +415,7 @@ async fn scan_url(
     source_maps.extend(header_source_maps);
     let api_calls_list = network_monitor.get_api_calls().await;
 
-    let tech = technologies::detect_all(&page, &all_calls, &meta_tags, &scripts_array).await;
+    let mut tech = technologies::detect_all(&page, &all_calls, &meta_tags, &scripts_array).await;
 
     let api_call_urls: Vec<String> = api_calls_list.iter().map(|c| c.url.clone()).collect();
     let third_party: Vec<String> = all_calls
@@ -428,24 +436,30 @@ async fn scan_url(
         );
     }
 
-    let (mut all_vulns, security) = analyze_security(&raw_cookies, &all_calls, &url);
+    let (all_vulns, security) = analyze_security(&raw_cookies, &all_calls, &url);
 
     let script_refs: Vec<(&str, &str)> = script_bodies
         .iter()
         .map(|(text, src)| (text.as_str(), src.as_str()))
         .collect();
-    let rsc_vulns = rsc::detect(&script_refs, &window_objects);
-    // Why: A vulnerability may arrive from both security analysis and RSC detection.
-    let mut seen_vulns: std::collections::HashSet<(String, Option<String>)> = all_vulns
-        .iter()
-        .map(|v| (v.vuln_type.clone(), v.url.clone()))
-        .collect();
-    for vuln in rsc_vulns {
-        if seen_vulns.insert((vuln.vuln_type.clone(), vuln.url.clone())) {
-            all_vulns.push(vuln);
-        }
+    if technologies::rsc::fingerprint(&script_refs, &window_objects).is_present() {
+        tech.technologies.push("React Server Components".to_owned());
+        tech.technologies.sort();
+        tech.technologies.dedup();
     }
-    all_vulns.extend(vulnerabilities::check_all(&tech.versions));
+    let requested = url::Url::parse(&url).ok();
+    let document = page
+        .url()
+        .await
+        .ok()
+        .flatten()
+        .and_then(|s| url::Url::parse(&s).ok());
+    let advisory_checks = vulnerabilities::assess(
+        &config.deployments,
+        requested.as_ref(),
+        document.as_ref(),
+        &tech.versions,
+    );
 
     let manifest_report = manifests::analyze(
         &window_objects,
@@ -534,6 +548,7 @@ async fn scan_url(
         technologies: tech.technologies,
         technology_versions,
         vulnerabilities: all_vulns,
+        advisory_checks,
         storage_assessments,
         comments,
         api_tests: vec![],

@@ -297,7 +297,9 @@ pub(crate) fn score_vulnerability(vuln: &Vulnerability, target_host: Option<&str
         .or(vuln.url.as_deref())
         .map_or(Origin::FirstParty, |url| classify_origin(url, target_host));
 
-    let exploitability = if inferred {
+    let exploitability = if sources.contains(&EvidenceSource::Deployment) {
+        Exploitability::None
+    } else if inferred {
         Exploitability::PreconditionUnmet
     } else {
         Exploitability::PrivilegedNoPrecondition

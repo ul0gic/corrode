@@ -1,11 +1,11 @@
-// Does:  Checks route recovery and advisory classification from framework artifacts.
+// Does:  Checks route recovery and framework identification from framework artifacts.
 // Holds: Flight markers alone establish a surface without confirming a vulnerable version.
 
 use std::collections::HashMap;
 
 use corrode_scanner::detectors::manifests;
 use corrode_scanner::detectors::sourcemaps::retrieve;
-use corrode_scanner::detectors::vulnerabilities::rsc;
+use corrode_scanner::detectors::technologies::rsc;
 
 fn windows(pairs: &[(&str, &str)]) -> HashMap<String, String> {
     pairs
@@ -68,18 +68,6 @@ fn flight_fixture_fingerprints_app_router_surface() {
     assert!(surface.flight_markers);
     assert!(surface.app_router);
     assert!(surface.server_dom, "react-server-dom bridge referenced");
-}
-
-#[test]
-fn flight_fixture_without_version_emits_inferred_advisory_only() {
-    let js = include_str!("../fixtures/rsc/next-flight.js");
-    let scripts = [(js, "https://app.example.com/page.js")];
-    let vulns = rsc::detect(&scripts, &HashMap::new());
-
-    assert_eq!(vulns.len(), 1, "{vulns:?}");
-    let advisory = vulns.first().expect("inferred advisory");
-    assert_eq!(advisory.severity, "info");
-    assert!(advisory.description.starts_with("inferred:"));
 }
 
 #[test]

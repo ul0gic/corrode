@@ -18,17 +18,23 @@ struct Version(u32, u32, u32);
 ///
 ///     assert!(corrode_scanner::detectors::vulnerabilities::wordpress::check_cves(&[]).is_empty());
 pub fn check_cves(versions: &[TechnologyVersion]) -> Vec<Vulnerability> {
+    assess(versions).ok().flatten().into_iter().collect()
+}
+
+pub(crate) fn assess(
+    versions: &[TechnologyVersion],
+) -> Result<Option<Vulnerability>, &'static str> {
     let Some(observed) = versions.iter().find(|version| {
         version.name.eq_ignore_ascii_case("WordPress")
             && is_authoritative_method(&version.detection_method)
     }) else {
-        return Vec::new();
+        return Err("No usable WordPress generator version was observed.");
     };
     let Some(raw_version) = observed.version.as_deref() else {
-        return Vec::new();
+        return Err("The generator did not supply a version.");
     };
     let Some(version) = parse_version(raw_version) else {
-        return Vec::new();
+        return Err("The generator version could not be compared.");
     };
 
     let (source, location) = match observed.detection_method.as_str() {
@@ -37,7 +43,7 @@ pub fn check_cves(versions: &[TechnologyVersion]) -> Vec<Vulnerability> {
             EvidenceSource::Network,
             "naturally observed WordPress REST response".to_owned(),
         ),
-        _ => return Vec::new(),
+        _ => return Err("Unknown generator source."),
     };
     let evidence = vec![FindingEvidence {
         source,
@@ -48,44 +54,27 @@ pub fn check_cves(versions: &[TechnologyVersion]) -> Vec<Vulnerability> {
     if in_range(version, Version(6, 9, 0), Version(6, 9, 4))
         || in_range(version, Version(7, 0, 0), Version(7, 0, 1))
     {
-        return vec![Vulnerability {
+        return Ok(Some(Vulnerability {
             vuln_type: "WordPress pre-authentication RCE chain (CVE-2026-60137/CVE-2026-63030)"
                 .to_owned(),
             severity: "critical".to_owned(),
             description: format!(
-                "WordPress {raw_version} is in the affected range for the SQL injection \
-                 prerequisite CVE-2026-60137 and the object-instantiation flaw \
+                "The site advertises WordPress {raw_version}, in the affected range for the SQL injection \
+                 prerequisite CVE-2026-60137 and the REST API batch-route confusion issue \
                  CVE-2026-63030, which can be chained for unauthenticated remote code \
-                 execution. Advisories: {SQLI_ADVISORY} and {RCE_ADVISORY}."
+                 execution (CVSS 3.1: 9.8 for the chain). Host exploitability is unverified. Advisories: {SQLI_ADVISORY} and {RCE_ADVISORY}."
             ),
             remediation:
                 "Upgrade immediately to WordPress 6.9.5, 7.0.2, or a newer supported release."
                     .to_owned(),
             url: None,
-            disposition: AssessmentDisposition::Finding,
+            disposition: AssessmentDisposition::Lead,
             evidence,
             confidence: None,
-        }];
+        }));
     }
 
-    if in_range(version, Version(6, 8, 0), Version(6, 8, 5)) {
-        return vec![Vulnerability {
-            vuln_type: "WordPress SQL injection (CVE-2026-60137)".to_owned(),
-            severity: "medium".to_owned(),
-            description: format!(
-                "WordPress {raw_version} is affected by CVE-2026-60137. This 6.8.x range \
-                 is not affected by the full CVE-2026-63030 RCE chain. Advisory: \
-                 {SQLI_ADVISORY}."
-            ),
-            remediation: "Upgrade to WordPress 6.8.6 or a newer supported release.".to_owned(),
-            url: None,
-            disposition: AssessmentDisposition::Finding,
-            evidence,
-            confidence: None,
-        }];
-    }
-
-    Vec::new()
+    Ok(None)
 }
 
 fn is_authoritative_method(method: &str) -> bool {
@@ -133,14 +122,9 @@ mod tests {
             assert!(findings[0].vuln_type.contains("CVE-2026-63030"));
         }
 
-        for raw in ["6.8.0", "6.8.5"] {
-            let findings = check_cves(&[version(raw, REST_GENERATOR_METHOD)]);
-            assert_eq!(findings.len(), 1, "{raw}");
-            assert_eq!(findings[0].severity, "medium");
-            assert!(findings[0].description.contains("not affected by the full"));
-        }
-
-        for raw in ["6.8.6", "6.9.5", "7.0.2", "7.1.0", "8.0.0"] {
+        for raw in [
+            "6.8.0", "6.8.5", "6.8.6", "6.9.5", "7.0.2", "7.1.0", "8.0.0",
+        ] {
             assert!(
                 check_cves(&[version(raw, META_GENERATOR_METHOD)]).is_empty(),
                 "{raw}"

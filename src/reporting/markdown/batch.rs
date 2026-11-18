@@ -29,12 +29,18 @@ pub(crate) fn write(
     lines.push(format!("**Succeeded**: {succeeded}"));
     lines.push(format!("**Failed**: {failed}"));
     lines.push(format!("**Total Secrets**: {total_secrets}"));
-    lines.push(format!("**Total Vulnerabilities**: {total_vulns}\n"));
+    lines.push(format!(
+        "**Vulnerability findings (excludes advisory matches)**: {total_vulns}\n"
+    ));
 
     lines.push("---\n".to_owned());
     lines.push("## Per-Target Results\n".to_owned());
-    lines.push("| URL | Secrets | Vulns | Status |".to_owned());
-    lines.push("|-----|---------|-------|--------|".to_owned());
+    lines.push("Advisory comparisons use deployment records or site metadata. Host exploitability is unverified.\n".to_owned());
+    lines.push(
+        "| URL | Secrets | Vulnerability findings | Advisory comparisons | Scan status |"
+            .to_owned(),
+    );
+    lines.push("|-----|---------|-------|--------|--------|".to_owned());
 
     for outcome in outcomes {
         let status = match &outcome.status {
@@ -45,8 +51,8 @@ pub(crate) fn write(
             }
         };
         lines.push(format!(
-            "| {} | {} | {} | {} |",
-            outcome.url, outcome.secrets, outcome.vulns, status
+            "| {} | {} | {} | {} | {} |",
+            outcome.url, outcome.secrets, outcome.vulns, outcome.advisory_summary, status
         ));
     }
 

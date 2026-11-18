@@ -1,101 +1,17 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Test CVE Detection Fixture - Corrode QA</title>
-    <!--
-        This fixture page simulates various React and Next.js environments
-        for CVE detection testing. It includes:
-        - React DevTools hook simulation for version detection
-        - react-server-dom-webpack version strings for multiple CVEs
-        - Next.js __NEXT_DATA__ with various buildId values
-        - App Router and Pages Router script paths
-    -->
-
-    <!-- Pages Router script (simulated) -->
-    <script src="/_next/static/chunks/pages/index-abc123.js"></script>
-    <!-- App Router script (simulated) -->
-    <script src="/_next/static/chunks/app/layout-def456.js"></script>
+    <meta charset="utf-8">
+    <title>Client-only advisory look-alike</title>
 </head>
 <body>
-    <!-- 1. React DevTools hook simulation with version -->
+    <h1>Client-only advisory look-alike</h1>
+    <p>This static page advertises React and Next.js. A browser-only scan should
+    identify framework signals and emit zero server CVE findings.</p>
     <script>
-        // Simulate the React DevTools global hook that React registers during init
-        window.__REACT_DEVTOOLS_GLOBAL_HOOK__ = {
-            renderers: new Map([
-                [1, { version: "19.2.0", bundleType: 0 }]
-            ])
-        };
-    </script>
-
-    <!-- 2. CVE-2025-55182 (Critical RCE) — vulnerable version strings -->
-    <script>
-        // react-server-dom-webpack version 19.2.0 is vulnerable
-        var __RSC_MANIFEST = "react-server-dom-webpack@19.2.0";
-    </script>
-    <script>
-        // Also test with parcel bundler
-        var __RSC_PARCEL = "react-server-dom-parcel version 19.1.0";
-    </script>
-    <script>
-        // Minified form with narrow separator
-        var __RSC_MIN = "react-server-dom-turbopack/19.0.0";
-    </script>
-
-    <!-- 3. CVE-2025-55183 (Source Code Exposure) — affected range 19.0.0-19.2.2 -->
-    <script>
-        // Version in the affected range for source code exposure
-        var __RSC_SRC_EXPOSURE = "react-server-dom-webpack version 19.1.3";
-    </script>
-
-    <!-- 4. CVE-2026-23864 (DoS Jan 2026) — affected range 19.0.0-19.2.3 -->
-    <script>
-        // Version 19.2.3 is still vulnerable to this CVE
-        var __RSC_DOS_2026 = "react-server-dom-webpack@19.2.3";
-    </script>
-
-    <!-- 5. Patched version — should NOT trigger any CVE -->
-    <script>
-        // Version 19.2.4 is patched for all known CVEs
-        var __RSC_PATCHED = "react-server-dom-webpack@19.2.4";
-    </script>
-
-    <!-- 6. Next.js __NEXT_DATA__ with development buildId -->
-    <script id="__NEXT_DATA__" type="application/json">
-    {
-        "buildId": "development",
-        "page": "/",
-        "props": {
-            "pageProps": {}
-        },
-        "runtimeConfig": {
-            "apiUrl": "https://api.example.com"
-        }
-    }
-    </script>
-
-    <!-- 7. Next.js __NEXT_DATA__ setup for window object -->
-    <script>
-        window.__NEXT_DATA__ = {
-            buildId: "aBcDeFgHiJkLmN",
-            page: "/dashboard",
-            props: { pageProps: { user: "test" } },
-            runtimeConfig: {
-                apiUrl: "https://api.example.com",
-                analyticsKey: "UA-12345"
-            }
-        };
-    </script>
-
-    <!-- 8. Build manifest script path (for buildId extraction) -->
-    <script src="/_next/static/aBcDeFgHiJkLmN/_buildManifest.js"></script>
-    <script src="/_next/static/aBcDeFgHiJkLmN/_ssgManifest.js"></script>
-
-    <!-- 9. React 18.x — should NOT trigger RSC CVEs (RSC not in 18.x) -->
-    <script>
-        // Pre-19 React, no RSC support
-        var __OLD_REACT = "react-server-dom-webpack@18.2.0";
+        window.__NEXT_DATA__ = {buildId: "fixture", page: "/"};
+        window.__next_f = [];
+        window.__next_f.push([1, "react-server-dom-webpack@19.0.0/client"]);
     </script>
 </body>
 </html>

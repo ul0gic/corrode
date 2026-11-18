@@ -7,7 +7,7 @@ use std::path::Path;
 
 use crate::types::ScanResult;
 
-const SCHEMA_VERSION: &str = "0.5";
+const SCHEMA_VERSION: &str = "0.6";
 
 /// Writes a versioned JSON report, returning serialization or filesystem errors.
 ///
@@ -58,7 +58,7 @@ mod tests {
         let raw = fs::read_to_string(&path).expect("read json");
         let parsed: serde_json::Value = serde_json::from_str(&raw).expect("parse json");
 
-        assert_eq!(parsed["schema_version"], "0.5");
+        assert_eq!(parsed["schema_version"], "0.6");
         assert_eq!(
             parsed["secrets"]["aws_key"][0]["confidence"]["level"],
             "high"

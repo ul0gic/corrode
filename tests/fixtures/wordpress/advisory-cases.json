@@ -1,6 +1,6 @@
 [
-  { "version": "6.8.0", "expected_severity": "medium" },
-  { "version": "6.8.5", "expected_severity": "medium" },
+  { "version": "6.8.0", "expected_severity": null },
+  { "version": "6.8.5", "expected_severity": null },
   { "version": "6.8.6", "expected_severity": null },
   { "version": "6.9.0", "expected_severity": "critical" },
   { "version": "6.9.4", "expected_severity": "critical" },

@@ -247,7 +247,13 @@ fn render_risk_and_metrics(report: &mut Vec<String>, result: &ScanResult, counts
         _ => ".",
     };
 
-    report.push(format!("**Risk Level**: [{risk_icon}] {risk_level}\n"));
+    if counts.critical + counts.high + counts.medium + counts.low + counts.info == 0 {
+        report.push("**Highest finding severity**: No actionable findings recorded.\n".to_owned());
+    } else {
+        report.push(format!(
+            "**Highest finding severity**: [{risk_icon}] {risk_level}\n"
+        ));
+    }
 
     report.push("| Metric | Count |".to_owned());
     report.push("|--------|-------|".to_owned());
@@ -310,6 +316,10 @@ pub(crate) fn render_summary(result: &ScanResult) -> Vec<String> {
 
     let counts = count_findings(result);
 
+    report.push(format!(
+        "**Advisory comparisons**: {}. Host exploitability is unverified.\n",
+        crate::reporting::advisory_summary(&result.advisory_checks)
+    ));
     render_risk_and_metrics(&mut report, result, &counts);
 
     if !result.technologies.is_empty() {
@@ -351,7 +361,7 @@ mod tests {
         });
 
         let summary = render_summary(&result).join("\n");
-        assert!(summary.contains("**Risk Level**: [.] INFO"));
+        assert!(summary.contains("No actionable findings recorded"));
         assert!(summary.contains("| MEDIUM findings | 0 |"));
         assert!(summary.contains("| Manual-validation leads | 1 |"));
     }

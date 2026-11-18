@@ -21,6 +21,8 @@ pub enum OutputFormat {
 /// Effective browser, target, and reporting settings.
 #[derive(Debug, Clone)]
 pub struct Config {
+    /// Optional owner-supplied deployment evidence keyed by exact URL.
+    pub deployments: crate::detectors::vulnerabilities::Deployments,
     /// Single target supplied on the command line.
     pub url: Option<String>,
     /// Targets read from the batch file in input order.
@@ -61,6 +63,9 @@ pub struct CustomPattern {
 /// Optional TOML sections for scan, browser, pattern, and report settings.
 #[derive(Debug, Clone, Deserialize, Default)]
 pub struct ConfigFile {
+    /// Deployed package versions and configuration supplied by the site owner.
+    #[serde(default)]
+    pub deployments: crate::detectors::vulnerabilities::Deployments,
     /// Scan settings supplied by the file.
     pub scan: Option<ScanSection>,
     /// Browser launch settings supplied by the file.
@@ -174,6 +179,7 @@ fn parse_format(s: &str) -> Option<OutputFormat> {
 /// # assert_eq!(settings.timeout, 45);
 /// ```
 pub fn merge_config_file(config: &mut Config, file: &ConfigFile) {
+    config.deployments.clone_from(&file.deployments);
     // Why: The CLI supplies values without tracking whether the caller explicitly chose a default.
     if let Some(scan) = &file.scan {
         if let Some(timeout) = scan.timeout {

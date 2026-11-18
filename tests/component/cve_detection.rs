@@ -1,165 +1,159 @@
-// Does:  Checks version boundaries for React Server Components advisories.
-// Holds: A patch for one advisory can leave another advisory applicable.
+// Does:  Checks high-impact advisories against installed releases, deployment roles, and target identity.
+// Holds: Patched releases and look-alike deployments produce no advisory for the affected component.
 
-use corrode_scanner::detectors::vulnerabilities::react::detect_rsc_vulns;
+use corrode_scanner::config::ConfigFile;
+use corrode_scanner::detectors::vulnerabilities::check_all;
+use corrode_scanner::types::{
+    AssessmentDisposition, EvidenceSource, TechnologyVersion, Vulnerability,
+};
+use url::Url;
 
-const SRC: &str = "https://app.example.com/_next/static/chunk.js";
+const TARGET: &str = "https://example.test/app";
 
-fn vuln_types(text: &str) -> Vec<String> {
-    detect_rsc_vulns(text, SRC)
-        .into_iter()
-        .map(|v| v.vuln_type)
-        .collect()
-}
-
-fn flags_rce(text: &str) -> bool {
-    vuln_types(text)
-        .iter()
-        .any(|t| t.contains("CVE-2025-55182"))
-}
-
-fn flags_source_exposure(text: &str) -> bool {
-    vuln_types(text)
-        .iter()
-        .any(|t| t.contains("CVE-2025-55183"))
-}
-
-fn flags_dos_2026(text: &str) -> bool {
-    vuln_types(text)
-        .iter()
-        .any(|t| t.contains("CVE-2026-23864"))
+fn assess(table: &str, version: &str, conditions: &str) -> Vec<Vulnerability> {
+    let config: ConfigFile = toml::from_str(&format!(
+        "[deployments.'{TARGET}'.{table}]\nunmodified_upstream_version='{version}'\n{conditions}"
+    ))
+    .expect("valid deployment");
+    let url = Url::parse(TARGET).unwrap();
+    config.deployments.findings(&url, &url)
 }
 
 #[test]
-fn rce_matches_each_affected_version() {
-    assert!(flags_rce("react-server-dom-webpack@19.0.0"));
-    assert!(flags_rce("react-server-dom-webpack version 19.1.0"));
-    assert!(flags_rce("react-server-dom-parcel/19.1.1"));
-    assert!(flags_rce("react-server-dom-turbopack@19.2.0"));
+fn react2shell_requires_an_affected_deployed_server_renderer() {
+    for package in [
+        "react-server-dom-webpack",
+        "react-server-dom-parcel",
+        "react-server-dom-turbopack",
+    ] {
+        let settings = format!("package='{package}'\nserves_server_components=true");
+        for v in ["19.0.0", "19.1.0", "19.1.1", "19.2.0"] {
+            let results = assess("react", v, &settings);
+            assert_eq!(results.len(), 1);
+            let finding = results.first().expect("one React advisory");
+            assert!(finding.vuln_type.contains("CVE-2025-55182"));
+            assert_eq!(finding.disposition, AssessmentDisposition::Lead);
+            assert_eq!(
+                finding.evidence.first().unwrap().source,
+                EvidenceSource::Deployment
+            );
+        }
+        for v in ["19.0.1", "19.1.2", "19.2.1"] {
+            assert!(assess("react", v, &settings).is_empty());
+        }
+    }
+    for settings in [
+        "package='react'\nserves_server_components=true",
+        "package='react-server-dom-webpack'\nserves_server_components=false",
+    ] {
+        assert!(assess("react", "19.1.1", settings).is_empty());
+    }
 }
 
 #[test]
-fn rce_emits_critical_severity() {
-    let vulns = detect_rsc_vulns("react-server-dom-webpack@19.0.0", SRC);
-    let rce = vulns
-        .iter()
-        .find(|v| v.vuln_type.contains("CVE-2025-55182"))
-        .expect("RCE finding present");
-    assert_eq!(rce.severity, "critical");
-    assert_eq!(rce.url.as_deref(), Some(SRC));
+fn php2shell_coalesces_both_ids_and_respects_branch_fixes_and_web_role() {
+    for (last, fixed) in [
+        ("8.2.34", "8.2.35"),
+        ("8.3.35", "8.3.36"),
+        ("8.4.26", "8.4.27"),
+        ("8.5.11", "8.5.12"),
+    ] {
+        let results = assess("php", last, "serves_web_requests=true");
+        assert_eq!(results.len(), 1);
+        let title = &results.first().unwrap().vuln_type;
+        assert!(title.contains("109618") && title.contains("109619"));
+        assert!(assess("php", fixed, "serves_web_requests=true").is_empty());
+        assert!(assess("php", last, "serves_web_requests=false").is_empty());
+    }
+    assert!(assess("php", "8.1.5", "serves_web_requests=true").is_empty());
 }
 
 #[test]
-fn rce_rejects_patched_versions() {
-    assert!(!flags_rce("react-server-dom-webpack@19.0.1"));
-    assert!(!flags_rce("react-server-dom-webpack@19.1.2"));
-    assert!(!flags_rce("react-server-dom-webpack@19.2.1"));
+fn nginx_advisories_have_distinct_introductions_and_proxy_prerequisites() {
+    let proxy = "serves_http2=true\nproxies_to_backend=true\nlow_worker_connections_observed=true";
+    for (v, expected) in [
+        ("1.9.4", 0),
+        ("1.9.5", 1),
+        ("1.19.6", 1),
+        ("1.19.7", 2),
+        ("1.30.6", 2),
+        ("1.30.7", 0),
+        ("1.31.8", 2),
+        ("1.31.9", 0),
+        ("1.32.0", 0),
+    ] {
+        assert_eq!(assess("nginx_open_source", v, proxy).len(), expected, "{v}");
+    }
+    for setup in [
+        "serves_http2=true",
+        "serves_http2=true\nproxies_to_backend=false\nlow_worker_connections_observed=true",
+        "serves_http2=true\nproxies_to_backend=true\nlow_worker_connections_observed=false",
+    ] {
+        let findings = assess("nginx_open_source", "1.31.8", setup);
+        assert_eq!(findings.len(), 1);
+        assert!(findings.first().unwrap().vuln_type.contains("123007"));
+    }
+    assert!(assess("nginx_open_source", "1.31.8", "serves_http2=false").is_empty());
 }
 
 #[test]
-fn rce_rejects_pre_rsc_react_18() {
-    assert!(!flags_rce("react-server-dom-webpack@18.2.0"));
+fn vite_checks_each_patched_branch_and_requires_an_exposed_dev_server() {
+    for (last, fixed) in [
+        ("6.4.5", "6.4.6"),
+        ("7.3.7", "7.3.8"),
+        ("8.1.6", "8.1.7"),
+        ("8.2.4", "8.2.5"),
+        ("8.3.6", "8.3.7"),
+    ] {
+        assert_eq!(
+            assess("vite", last, "dev_server_exposed_to_network=true").len(),
+            1
+        );
+        assert!(assess("vite", fixed, "dev_server_exposed_to_network=true").is_empty());
+        assert!(assess("vite", last, "dev_server_exposed_to_network=false").is_empty());
+    }
 }
 
 #[test]
-fn rce_tolerates_minified_separators() {
-    assert!(flags_rce("react-server-dom-webpack/19.2.0"));
-    assert!(flags_rce("react-server-dom-webpack 19.2.0"));
-    assert!(flags_rce("react-server-dom-webpack:19.2.0"));
+fn a_record_cannot_follow_a_redirect_or_leak_to_another_batch_target() {
+    let config: ConfigFile = toml::from_str(&format!("[deployments.'{TARGET}'.php]\nunmodified_upstream_version='8.5.11'\nserves_web_requests=true")).unwrap();
+    let site = Url::parse(TARGET).unwrap();
+    for other in [
+        "https://example.test/other",
+        "http://example.test/app",
+        "https://example.test:8443/app",
+        "https://elsewhere.test/app",
+    ] {
+        let other = Url::parse(other).unwrap();
+        assert!(config.deployments.findings(&site, &other).is_empty());
+        assert!(config.deployments.findings(&other, &site).is_empty());
+        assert!(config.deployments.findings(&other, &other).is_empty());
+    }
+    for v in [
+        "8.5.11-1ubuntu1",
+        "v8.5.11",
+        "8.5.11-beta",
+        "8.5",
+        "8.05.11",
+    ] {
+        let config = format!("[deployments.'{TARGET}'.php]\nunmodified_upstream_version='{v}'\nserves_web_requests=true");
+        assert!(toml::from_str::<ConfigFile>(&config).is_err(), "{v}");
+    }
 }
 
 #[test]
-fn rce_matches_all_bundlers() {
-    assert!(flags_rce("react-server-dom-webpack@19.2.0"));
-    assert!(flags_rce("react-server-dom-parcel@19.2.0"));
-    assert!(flags_rce("react-server-dom-turbopack@19.2.0"));
-}
-
-#[test]
-fn source_exposure_matches_affected_boundary_versions() {
-    assert!(flags_source_exposure("react-server-dom-webpack@19.0.0"));
-    assert!(flags_source_exposure("react-server-dom-webpack@19.0.2"));
-    assert!(flags_source_exposure("react-server-dom-webpack@19.1.3"));
-    assert!(flags_source_exposure("react-server-dom-webpack@19.2.2"));
-}
-
-#[test]
-fn source_exposure_rejects_patched_versions() {
-    assert!(!flags_source_exposure("react-server-dom-webpack@19.0.3"));
-    assert!(!flags_source_exposure("react-server-dom-webpack@19.1.4"));
-    assert!(!flags_source_exposure("react-server-dom-webpack@19.2.3"));
-}
-
-#[test]
-fn source_exposure_rejects_pre_rsc_react_18() {
-    assert!(!flags_source_exposure("react-server-dom-webpack@18.2.0"));
-}
-
-#[test]
-fn source_exposure_matches_all_bundlers() {
-    assert!(flags_source_exposure("react-server-dom-webpack@19.1.3"));
-    assert!(flags_source_exposure("react-server-dom-parcel@19.1.3"));
-    assert!(flags_source_exposure("react-server-dom-turbopack@19.1.3"));
-}
-
-#[test]
-fn dos_2026_matches_affected_boundary_versions() {
-    assert!(flags_dos_2026("react-server-dom-webpack@19.0.0"));
-    assert!(flags_dos_2026("react-server-dom-webpack@19.0.3"));
-    assert!(flags_dos_2026("react-server-dom-webpack@19.1.4"));
-    assert!(flags_dos_2026("react-server-dom-webpack@19.2.3"));
-}
-
-#[test]
-fn dos_2026_rejects_patched_versions() {
-    assert!(!flags_dos_2026("react-server-dom-webpack@19.0.4"));
-    assert!(!flags_dos_2026("react-server-dom-webpack@19.1.5"));
-    assert!(!flags_dos_2026("react-server-dom-webpack@19.2.4"));
-}
-
-#[test]
-fn dos_2026_rejects_pre_rsc_react_18() {
-    assert!(!flags_dos_2026("react-server-dom-webpack@18.2.0"));
-}
-
-#[test]
-fn dos_2026_matches_all_bundlers() {
-    assert!(flags_dos_2026("react-server-dom-webpack@19.2.3"));
-    assert!(flags_dos_2026("react-server-dom-parcel@19.2.3"));
-    assert!(flags_dos_2026("react-server-dom-turbopack@19.2.3"));
-}
-
-#[test]
-fn version_19_2_1_is_exposure_and_dos_but_not_rce() {
-    let text = "react-server-dom-webpack@19.2.1";
-    assert!(!flags_rce(text), "19.2.1 is patched for RCE");
-    assert!(
-        flags_source_exposure(text),
-        "19.2.1 still has source exposure"
-    );
-}
-
-#[test]
-fn version_19_2_3_is_dos_2026_but_not_source_exposure() {
-    let text = "react-server-dom-webpack@19.2.3";
-    assert!(
-        !flags_source_exposure(text),
-        "19.2.3 patched for source exposure"
-    );
-    assert!(flags_dos_2026(text), "19.2.3 still has the 2026 DoS");
-}
-
-#[test]
-fn version_19_2_4_is_patched_for_all_cves() {
-    let text = "react-server-dom-webpack@19.2.4";
-    assert!(!flags_rce(text));
-    assert!(!flags_source_exposure(text));
-    assert!(!flags_dos_2026(text));
-    assert!(detect_rsc_vulns(text, SRC).is_empty());
-}
-
-#[test]
-fn non_rsc_text_yields_no_findings() {
-    assert!(detect_rsc_vulns("function render(){ return 1; }", SRC).is_empty());
-    assert!(detect_rsc_vulns("", SRC).is_empty());
+fn product_names_and_client_versions_do_not_generate_server_advisories() {
+    let versions = [
+        "Next.js (App Router)",
+        "react-server-dom-webpack",
+        "PHP",
+        "nginx",
+        "Vite",
+    ]
+    .map(|name| TechnologyVersion {
+        name: name.to_owned(),
+        version: Some("19.0.0".to_owned()),
+        detection_method: "script".to_owned(),
+    });
+    assert!(check_all(&versions).is_empty());
 }

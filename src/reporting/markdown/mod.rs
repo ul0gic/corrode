@@ -32,6 +32,7 @@ pub fn write(result: &ScanResult, base_output_dir: &Path) -> Result<()> {
     let mut report = report_header(result, "Corrode Security Scan Report");
 
     report.extend(summary::render_summary(result));
+    report.extend(assessment::render_advisory_checks(result));
     report.extend(findings::render_findings(result));
     report.extend(findings::render_lead_assessments(result));
     report.extend(leads::render_additional_leads(result));
@@ -51,6 +52,7 @@ pub fn write(result: &ScanResult, base_output_dir: &Path) -> Result<()> {
          automatically confirmed vulnerabilities and do not independently determine headline risk.\n"
             .to_owned(),
     );
+    evidence.extend(assessment::render_advisory_checks(result));
     evidence.extend(findings::render_evidence_findings(result));
     evidence.extend(security::render_security_posture(result));
     evidence.extend(findings::render_api_tests(result));

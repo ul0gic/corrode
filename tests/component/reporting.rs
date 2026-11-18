@@ -139,7 +139,7 @@ fn confidence_serializes_in_json() {
     let parsed: serde_json::Value = serde_json::from_str(&raw).expect("parse json");
 
     let string_at = |path: &str| parsed.pointer(path).and_then(serde_json::Value::as_str);
-    assert_eq!(string_at("/schema_version"), Some("0.5"));
+    assert_eq!(string_at("/schema_version"), Some("0.6"));
     assert_eq!(
         string_at("/secrets/supabase_service_role/0/confidence/level"),
         Some("high")
@@ -189,4 +189,58 @@ fn concise_report_and_exhaustive_evidence_are_split() {
     assert!(!report.contains("Tailwind/SVG literal"));
     assert!(evidence.contains("JavaScript AST Findings"));
     assert!(evidence.contains("Tailwind/SVG literal"));
+}
+
+#[test]
+fn partial_deployment_reports_match_missing_and_out_of_range_separately() {
+    use corrode_scanner::{config::ConfigFile, detectors::vulnerabilities::assess};
+    let url = url::Url::parse("https://app.example.com/").unwrap();
+    let config: ConfigFile = toml::from_str(
+        r#"
+        [deployments."https://app.example.com/".nginx_open_source]
+        unmodified_upstream_version = "1.31.8"
+        serves_http2 = true
+        proxies_to_backend = true
+        low_worker_connections_observed = false
+        [deployments."https://app.example.com/".php]
+        unmodified_upstream_version = "8.5.12"
+        serves_web_requests = true
+    "#,
+    )
+    .unwrap();
+    let result = ScanResult {
+        url: url.to_string(),
+        advisory_checks: assess(&config.deployments, Some(&url), Some(&url), &[]),
+        ..ScanResult::default()
+    };
+    let (report, evidence) = read_markdown(&result, "partial-deployment");
+    for output in [&report, &evidence] {
+        assert!(output.contains("Worker connection pressure is unverified"));
+        assert!(output.contains("Host exploitability is unverified"));
+    }
+    assert!(report.contains("1 matched, 1 no match, 4 not assessed"));
+    assert!(!report.contains("## Actionable Findings"));
+    assert!(!report.contains("clean security posture"));
+
+    let serialized = serde_json::to_value(&result).unwrap();
+    let checks = serialized
+        .get("advisory_checks")
+        .unwrap()
+        .as_array()
+        .unwrap();
+    let status_for = |id: &str| {
+        checks
+            .iter()
+            .find(|c| c["advisory"].as_str().unwrap().contains(id))
+            .unwrap()["status"]
+            .as_str()
+    };
+    assert_eq!(status_for("123007"), Some("matched"));
+    assert_eq!(status_for("123633"), Some("not_assessed"));
+    assert_eq!(status_for("PHP"), Some("no_match"));
+    assert_eq!(status_for("WordPress"), Some("not_assessed"));
+    assert_eq!(
+        serialized.get("vulnerabilities"),
+        Some(&serde_json::json!([]))
+    );
 }
